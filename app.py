@@ -8,6 +8,27 @@ import os
 # --- 1. CONFIGURAÇÃO E IDENTIDADE VISUAL ---
 st.set_page_config(page_title="TecPulver Brasil", layout="centered", page_icon="🟢")
 
+# INJEÇÃO OCULTA DE METADADOS PWA (CORRIGIDO)
+components.html("""
+    <script>
+        var meta1 = document.createElement('meta');
+        meta1.name = "apple-mobile-web-app-capable"; meta1.content = "yes";
+        document.getElementsByTagName('head')[0].appendChild(meta1);
+
+        var meta2 = document.createElement('meta');
+        meta2.name = "mobile-web-app-capable"; meta2.content = "yes";
+        document.getElementsByTagName('head')[0].appendChild(meta2);
+
+        var meta3 = document.createElement('meta');
+        meta3.name = "apple-mobile-web-app-status-bar-style"; meta3.content = "black-translucent";
+        document.getElementsByTagName('head')[0].appendChild(meta3);
+
+        var link = document.createElement('link');
+        link.rel = "apple-touch-icon"; link.href = "https://raw.githubusercontent.com/felipe/tecpulver/main/logo.png";
+        document.getElementsByTagName('head')[0].appendChild(link);
+    </script>
+""", height=0, width=0)
+
 st.markdown("""
     <style>
     .icon-sprayer {
@@ -179,9 +200,24 @@ if not st.session_state.autenticado:
                 st.error("Por favor, preencha Nome e E-mail.")
     
     st.stop() # Interrompe o carregamento do restante do App
+
 # --- 4. BARRA LATERAL ---
 with st.sidebar:
     st.write(f"👤 **{st.session_state.usuario_logado}**")
+    st.divider()
+    # --- INSTRUÇÃO DE INSTALAÇÃO NA SIDEBAR ---
+with st.sidebar:
+    st.markdown("### 📱 Instalar no Celular")
+    if st.checkbox("Como instalar?"):
+        st.info("""
+        **No Android (Chrome):**
+        1. Clique nos 3 pontinhos (⋮) no topo.
+        2. Clique em **'Instalar aplicativo'**.
+        
+        **No iOS (Safari):**
+        1. Clique no botão de **Compartilhar** (quadrado com seta).
+        2. Role para baixo e clique em **'Adicionar à Tela de Início'**.
+        """)
     st.divider()
     if st.button("🚪 SAIR DA CONTA", key="sair_sidebar"):
         st.session_state.autenticado = False
