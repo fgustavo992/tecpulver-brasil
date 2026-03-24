@@ -138,7 +138,7 @@ def gerar_texto_whatsapp(cidade, produto, classe, modalidade, dados_hora):
     texto += f"✅ *Status:* APLICAÇÃO IDEAL"
     return urllib.parse.quote(texto)
 
-# --- 4. CONTROLE DE ACESSO ---
+# --- 4. SISTEMA DE CONTAS E ACESSO ---
 if 'autenticado' not in st.session_state:
     st.session_state.autenticado = False
 
@@ -146,25 +146,46 @@ if not st.session_state.autenticado:
     st.markdown("<div class='login-wrapper'>", unsafe_allow_html=True)
     exibir_logo_padrao()
     st.markdown("<h2 style='text-align:center;'>TecPulver Brasil</h2>", unsafe_allow_html=True)
-    c1, c2, c3 = st.columns([1, 4, 1])
-    with c2:
-        st.markdown("""
-            <div class="beneficios-box">
-                <div class="beneficio-item">✅ Janela Técnica 24h</div>
-                <div class="beneficio-item">✅ Monitoramento Risco de Chuva</div>
-                <div class="beneficio-item">✅ Base Agrofit Foliar Turbo</div>
-                <div class="dados-precisos">Baseado em dados meteorológicos de precisão</div>
-            </div>
-        """, unsafe_allow_html=True)
+    
+    tab_login, tab_cadastro = st.tabs(["🔐 Entrar", "📝 Criar Conta"])
+    
+    with tab_login:
+        email_login = st.text_input("E-mail:", key="login_email")
+        senha_login = st.text_input("Senha:", type="password", key="login_pass")
+        lembrar = st.checkbox("Manter-se conectado", value=True)
         
-        email = st.text_input("E-mail para acesso (30 dias grátis):", placeholder="ex: seuemail@dominio.com")
-        if st.button("🚀 INICIAR OPERAÇÃO", use_container_width=True):
-            if "@" in email and "." in email: 
+        if st.button("ACESSAR PLATAFORMA", use_container_width=True):
+            # Lógica simplificada para o lançamento:
+            if email_login and senha_login:
+                st.session_state.autenticado = True
+                st.success("Conectando...")
+                st.rerun()
+            else:
+                st.error("Preencha todos os campos.")
+                
+        st.markdown("<p style='text-align:center; color:#888;'>ou conecte-se com:</p>", unsafe_allow_html=True)
+        col_g, col_f = st.columns(2)
+        with col_g:
+            st.button("🌐 Google", use_container_width=True, disabled=True, help="Em breve")
+        with col_f:
+            st.button("📘 Facebook", use_container_width=True, disabled=True, help="Em breve")
+
+    with tab_cadastro:
+        st.markdown("<p style='font-size:0.9rem;'>Crie sua conta para 30 dias de teste grátis.</p>", unsafe_allow_html=True)
+        nome = st.text_input("Nome Completo:")
+        novo_email = st.text_input("E-mail:")
+        nova_senha = st.text_input("Crie uma Senha:", type="password")
+        confirm_senha = st.text_input("Confirme a Senha:", type="password")
+        
+        if st.button("CRIAR MINHA CONTA", use_container_width=True):
+            if nova_senha == confirm_senha and "@" in novo_email:
+                st.success("Conta criada com sucesso! Aproveite seus 30 dias.")
                 st.session_state.autenticado = True
                 st.rerun()
             else:
-                st.error("Por favor, insira um e-mail válido.")
-        exibir_link_erro()
+                st.error("Verifique os dados e a senha.")
+
+    exibir_link_erro()
     st.markdown("</div>", unsafe_allow_html=True)
     st.stop()
 
