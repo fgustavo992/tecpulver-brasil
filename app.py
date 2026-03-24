@@ -121,7 +121,7 @@ def gerar_tabela_html(tabela_dados):
     """
     return html
 
-# --- 3. SISTEMA DE ACESSO COM PERSISTÊNCIA ---
+# --- 3. SISTEMA DE ACESSO COM PERSISTÊNCIA (TELA DE LOGIN) ---
 if 'autenticado' not in st.session_state:
     params = st.query_params
     if params.get("u"):
@@ -130,34 +130,55 @@ if 'autenticado' not in st.session_state:
     else:
         st.session_state.autenticado = False
 
+# SE NÃO ESTIVER AUTENTICADO, MOSTRA TELA DE LOGIN/CADASTRO
 if not st.session_state.autenticado:
-    st.markdown("<h2 style='text-align:center;'>TecPulver Brasil</h2>", unsafe_allow_html=True)
+    # --- NOVO BLOCO: SÍMBOLO DE PRECISÃO GRANDE E CENTRALIZADO ---
+    html_simbolo_grande = """
+    <div style='display: flex; justify-content: center; align-items: center; margin-bottom: 25px;'>
+        <svg width="100" height="100" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" style='filter: drop-shadow(0px 0px 10px rgba(255,255,255,0.3));'>
+            <path d="M 20 80 A 30 30 0 0 1 80 80" stroke="white" stroke-width="6" stroke-linecap="round" fill="none"/>
+            <line x1="50" y1="15" x2="50" y2="60" stroke="white" stroke-width="6" stroke-linecap="round"/>
+            <path d="M 50 82 L 35 62 L 65 62 Z" fill="white"/>
+        </svg>
+    </div>
+    """
+    # Renderiza o símbolo centralizado
+    st.markdown(html_simbolo_grande, unsafe_allow_html=True)
+    
+    # Título Principal (TecPulver Brasil)
+    st.markdown("<h1 style='text-align:center; color: white; margin-bottom: 30px;'>TecPulver Brasil</h1>", unsafe_allow_html=True)
+    
+    # TABS DE LOGIN E CADASTRO
     t1, t2 = st.tabs(["🔐 Entrar", "📝 Criar Conta"])
 
     with t1:
-        e_in = st.text_input("E-mail:", key="e_login")
-        s_in = st.text_input("Senha:", type="password")
+        e_in = st.text_input("E-mail:", key="e_login", placeholder="seu@email.com")
+        s_in = st.text_input("Senha:", type="password", placeholder="******")
         manter = st.checkbox("Manter-se conectado", value=True)
-        if st.button("ACESSAR PLATAFORMA"):
-            if e_in:
+        if st.button("ACESSAR PLATAFORMA", type="primary"):
+            if e_in and s_in:
                 st.session_state.autenticado = True
                 st.session_state.usuario_logado = e_in.strip().lower()
                 if manter:
                     st.query_params["u"] = e_in.strip().lower()
                 st.rerun()
+            else:
+                st.error("Por favor, preencha e-mail e senha.")
 
     with t2:
-        n_cad = st.text_input("Nome:")
-        e_cad = st.text_input("E-mail:", key="e_cad")
-        if st.button("FINALIZAR CADASTRO"):
+        n_cad = st.text_input("Nome Completo:", placeholder="Felipe Santos")
+        e_cad = st.text_input("E-mail:", key="e_cad", placeholder="felipe@exemplo.com")
+        if st.button("FINALIZAR CADASTRO", type="secondary"):
             if n_cad and e_cad:
                 registrar_usuario_csv(n_cad, e_cad)
                 st.session_state.autenticado = True
                 st.session_state.usuario_logado = e_cad.strip().lower()
                 st.query_params["u"] = e_cad.strip().lower()
                 st.rerun()
-    st.stop()
-
+            else:
+                st.error("Por favor, preencha Nome e E-mail.")
+    
+    st.stop() # Interrompe o carregamento do restante do App
 # --- 4. BARRA LATERAL ---
 with st.sidebar:
     st.write(f"👤 **{st.session_state.usuario_logado}**")
