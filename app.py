@@ -4,6 +4,7 @@ import pandas as pd
 import requests
 from datetime import datetime
 import os
+import math
 
 # --- 1. CONFIGURAÇÃO E IDENTIDADE VISUAL ---
 st.set_page_config(page_title="TecPulver Brasil", layout="centered", page_icon="🟢")
@@ -33,7 +34,7 @@ st.markdown("""
     <style>
     .icon-sprayer {
     background: #2e7d32; 
-    padding: 12px; /* Ajustado para caber no cabeçalho */
+    padding: 12px;
     border-radius: 50%; 
     display: inline-flex;
     align-items: center;
@@ -55,7 +56,6 @@ st.markdown("""
         font-weight: 800 !important; border-radius: 10px !important;
         height: 3.5em !important; border: none !important;
     }
-    /* Botão de sair com cor diferente */
     div[data-testid="stButton"].sair-btn > button {
         background-color: #c0392b !important;
     }
@@ -81,7 +81,6 @@ def carregar_produtos_turbo(classe):
         "Fungicidas": "fungicidas.csv",
         "Inseticidas": "inseticidas.csv",
         "Reguladores": "reguladores.csv",
-        
     }
     arquivo = mapa.get(classe)
     if arquivo and os.path.exists(arquivo):
@@ -95,53 +94,6 @@ def carregar_produtos_turbo(classe):
             return [f"Erro na leitura: {arquivo}"]
     return [f"Arquivo {arquivo} não encontrado na pasta"]
 
-def gerar_tabela_html(tabela_dados):
-    linhas = ""
-    for row in tabela_dados:
-        horario, temp, umid, vento, status = row
-        if status == "IDEAL":
-            badge = '<span class="badge-ideal">✅ IDEAL</span>'
-            tr_bg = "background-color: rgba(76,175,80,0.07);"
-        else:
-            badge = '<span class="badge-inadequado">❌ INADEQUADO</span>'
-            tr_bg = ""
-
-        linhas += f"""
-        <tr style="{tr_bg}">
-            <td><span class="horario-pill">{horario}</span></td>
-            <td>🌡️ {temp}</td>
-            <td>💧 {umid}</td>
-            <td>💨 {vento}</td>
-            <td>{badge}</td>
-        </tr>
-        """
-
-    html = f"""
-    <!DOCTYPE html><html><head><meta charset="utf-8">
-    <style>
-        body {{ margin: 0; padding: 0; background: transparent; font-family: 'Segoe UI', Arial, sans-serif; }}
-        .tabela-horarios {{ width: 100%; border-collapse: collapse; border-radius: 12px; overflow: hidden; font-size: 0.93em; box-shadow: 0 4px 24px rgba(0,0,0,0.45); }}
-        .tabela-horarios thead tr {{ background: linear-gradient(135deg, #1a1a2e, #16213e); color: #fff; text-align: center; font-weight: 700; font-size: 0.82em; letter-spacing: 0.06em; text-transform: uppercase; }}
-        .tabela-horarios thead th {{ padding: 13px 10px; border-bottom: 2px solid #4CAF50; }}
-        .tabela-horarios tbody tr {{ border-bottom: 1px solid rgba(255,255,255,0.07); background-color: #0f0f1a; }}
-        .tabela-horarios tbody tr:nth-child(even) {{ background-color: #13132a; }}
-        .tabela-horarios tbody tr:hover {{ background-color: rgba(76,175,80,0.13) !important; }}
-        .tabela-horarios td {{ padding: 10px 12px; text-align: center; color: #dde1e7; font-weight: 500; }}
-        .badge-ideal {{ background: linear-gradient(135deg, #1b5e20, #2e7d32); color: #a5d6a7; padding: 5px 14px; border-radius: 20px; font-weight: 700; font-size: 0.82em; border: 1px solid #4CAF50; display: inline-block; }}
-        .badge-inadequado {{ background: linear-gradient(135deg, #7f1d1d, #b91c1c); color: #fca5a5; padding: 5px 14px; border-radius: 20px; font-weight: 700; font-size: 0.82em; border: 1px solid #ef4444; display: inline-block; }}
-        .horario-pill {{ background: rgba(76,175,80,0.15); border: 1px solid rgba(76,175,80,0.35); border-radius: 8px; padding: 3px 11px; font-weight: 700; color: #a5d6a7; font-size: 0.91em; }}
-    </style>
-    </head><body>
-    <table class="tabela-horarios">
-        <thead><tr>
-            <th>🕐 Horário</th><th>🌡️ Temperatura</th><th>💧 Umidade</th><th>💨 Vento</th><th>📊 Status</th>
-        </tr></thead>
-        <tbody>{linhas}</tbody>
-    </table>
-    </body></html>
-    """
-    return html
-
 # --- 3. SISTEMA DE ACESSO COM PERSISTÊNCIA (TELA DE LOGIN) ---
 if 'autenticado' not in st.session_state:
     params = st.query_params
@@ -151,9 +103,7 @@ if 'autenticado' not in st.session_state:
     else:
         st.session_state.autenticado = False
 
-# SE NÃO ESTIVER AUTENTICADO, MOSTRA TELA DE LOGIN/CADASTRO
 if not st.session_state.autenticado:
-    # --- NOVO BLOCO: SÍMBOLO DE PRECISÃO GRANDE E CENTRALIZADO ---
     html_simbolo_grande = """
     <div style='display: flex; justify-content: center; align-items: center; margin-bottom: 25px;'>
         <svg width="100" height="100" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" style='filter: drop-shadow(0px 0px 10px rgba(255,255,255,0.3));'>
@@ -163,13 +113,9 @@ if not st.session_state.autenticado:
         </svg>
     </div>
     """
-    # Renderiza o símbolo centralizado
     st.markdown(html_simbolo_grande, unsafe_allow_html=True)
-    
-    # Título Principal (TecPulver Brasil)
     st.markdown("<h1 style='text-align:center; color: white; margin-bottom: 30px;'>TecPulver Brasil</h1>", unsafe_allow_html=True)
     
-    # TABS DE LOGIN E CADASTRO
     t1, t2 = st.tabs(["🔐 Entrar", "📝 Criar Conta"])
 
     with t1:
@@ -199,13 +145,12 @@ if not st.session_state.autenticado:
             else:
                 st.error("Por favor, preencha Nome e E-mail.")
     
-    st.stop() # Interrompe o carregamento do restante do App
+    st.stop()
 
 # --- 4. BARRA LATERAL ---
 with st.sidebar:
     st.write(f"👤 **{st.session_state.usuario_logado}**")
     st.divider()
-    # --- INSTRUÇÃO DE INSTALAÇÃO NA SIDEBAR ---
 with st.sidebar:
     st.markdown("### 📱 Instalar no Celular")
     if st.checkbox("Como instalar?"):
@@ -230,17 +175,26 @@ if st.session_state.usuario_logado == "felipe_fgd_@hotmail.com":
     if os.path.exists('usuarios_cadastrados.csv'):
         df_gestor = pd.read_csv('usuarios_cadastrados.csv', sep=';')
         st.download_button("📥 BAIXAR LISTA DE USUÁRIOS (CSV)", df_gestor.to_csv(index=False, sep=';', encoding='utf-8-sig'), "relatorio_usuarios.csv", "text/csv", use_container_width=True)
+        df_novos = df_gestor.copy()
+        df_novos['Data'] = pd.to_datetime(df_novos['Data'], format='%d/%m/%Y %H:%M', errors='coerce')
+        data_corte = pd.Timestamp.now() - pd.Timedelta(days=7)
+        df_novos = df_novos[df_novos['Data'] >= data_corte]
+        st.download_button(
+            "🆕 BAIXAR NOVOS USUÁRIOS (ÚLTIMOS 7 DIAS)",
+            df_novos.to_csv(index=False, sep=';', encoding='utf-8-sig'),
+            "novos_usuarios.csv",
+            "text/csv",
+            use_container_width=True
+        )
     st.divider()
 
-# --- 6. CABEÇALHO COM SIMBOLOGIA DE PRECISÃO (SVG) E BOTÃO SAIR ---
-# Usamos um container único para garantir que o HTML seja lido corretamente
+# --- 6. CABEÇALHO ---
 header_container = st.container()
 
 with header_container:
     col_titulo, col_sair = st.columns([4, 1])
     
     with col_titulo:
-        # Definimos o HTML completo em uma variável separada
         html_cabecalho = f"""
         <div style='display: flex; align-items: center; gap: 15px; margin-bottom: 5px;'>
             <svg width="45" height="45" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
@@ -266,6 +220,7 @@ with header_container:
             st.rerun()
 
 st.divider()
+
 # --- 7. FORMULÁRIO TÉCNICO ---
 uf_sel = st.selectbox("📍 ESTADO (UF):",
                       options=["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"],
@@ -305,29 +260,161 @@ if st.button("VERIFICAR CONDIÇÕES AGORA", type="primary"):
                 res_clima = requests.get(clima_url).json()
 
                 st.markdown(f"### 🛰️ Planejamento 24h: {cid_sel} - {uf_sel}")
-                st.write(f"**Produto:** {prod_sel} | **Modalidade:** {tipo_app}")
-
+                
                 dados_horas = res_clima['hourly']
                 hora_atual = datetime.now().hour
-                tabela_dados = []
+                linhas_html = ""
 
                 for i in range(hora_atual, hora_atual + 24):
-                    t = dados_horas['temperature_2m'][i]
-                    u = dados_horas['relative_humidity_2m'][i]
-                    v = dados_horas['wind_speed_10m'][i]
-                    dt = (t * 0.75) - (u * 0.15)
+                    T = dados_horas['temperature_2m'][i]
+                    UR = dados_horas['relative_humidity_2m'][i]
+                    V = dados_horas['wind_speed_10m'][i]
 
-                    status = "IDEAL" if (2.0 <= dt <= 8.0 and 2.0 <= v <= 10.0 and t < 30) else "INADEQUADO"
-                    tabela_dados.append([f"{i % 24:02d}:00", f"{t:.1f}°C", f"{u:.0f}%", f"{v:.1f} km/h", status])
+                    # --- FÓRMULA DE STULL ---
+                    tw = (T * math.atan(0.151977 * math.pow(UR + 8.313659, 0.5)) +
+                          math.atan(T + UR) - math.atan(UR - 1.676331) +
+                          0.00391838 * math.pow(UR, 1.5) * math.atan(0.023101 * UR) - 4.686035)
+                    dt_real = round(T - tw, 1)
 
-                html_tabela = gerar_tabela_html(tabela_dados)
-                components.html(html_tabela, height=900, scrolling=True)
+                    ideal = (10.0 <= T <= 30.0) and (2.0 <= dt_real <= 8.0) and (2.0 <= V <= 12.0)
 
-                ideais = sum(1 for r in tabela_dados if r[4] == "IDEAL")
-                st.success(f"✅ {ideais} de 24 horários com condições IDEAIS para aplicação em {cid_sel}.")
+                    cor_dt = "#4ade80" if 2.0 <= dt_real <= 8.0 else "#f87171"
+
+                    # Row background alternado + highlight se ideal
+                    row_bg = "rgba(74,222,128,0.06)" if ideal else "rgba(255,255,255,0.02)"
+                    row_border = "1px solid rgba(74,222,128,0.15)" if ideal else "1px solid rgba(255,255,255,0.05)"
+
+                    if ideal:
+                        badge = """
+                        <span style="
+                            display:inline-flex; align-items:center; gap:5px;
+                            background: linear-gradient(135deg, #14532d, #166534);
+                            color: #bbf7d0;
+                            padding: 5px 14px;
+                            border-radius: 999px;
+                            font-size: 0.75em;
+                            font-weight: 700;
+                            letter-spacing: 0.05em;
+                            border: 1px solid rgba(74,222,128,0.3);
+                            text-transform: uppercase;
+                        ">✅ IDEAL</span>"""
+                    else:
+                        badge = """
+                        <span style="
+                            display:inline-flex; align-items:center; gap:5px;
+                            background: linear-gradient(135deg, #450a0a, #7f1d1d);
+                            color: #fca5a5;
+                            padding: 5px 14px;
+                            border-radius: 999px;
+                            font-size: 0.75em;
+                            font-weight: 700;
+                            letter-spacing: 0.05em;
+                            border: 1px solid rgba(248,113,113,0.3);
+                            text-transform: uppercase;
+                        ">❌ INADEQUADO</span>"""
+
+                    linhas_html += f"""
+                    <tr style="background:{row_bg}; border-bottom:{row_border}; transition: background 0.2s;">
+                        <td style="padding:13px 16px; text-align:center;">
+                            <span style="
+                                background: rgba(165,214,167,0.12);
+                                color: #a5d6a7;
+                                font-family: 'Courier New', monospace;
+                                font-weight: 800;
+                                font-size: 0.95em;
+                                padding: 4px 10px;
+                                border-radius: 6px;
+                                border: 1px solid rgba(165,214,167,0.2);
+                                letter-spacing: 0.05em;
+                            ">{i % 24:02d}:00</span>
+                        </td>
+                        <td style="padding:13px 16px; text-align:center; color:#e2e8f0; font-size:0.95em; font-weight:600;">
+                            {T:.1f}<span style="color:#94a3b8; font-size:0.8em; margin-left:2px;">°C</span>
+                        </td>
+                        <td style="padding:13px 16px; text-align:center; color:{cor_dt}; font-weight:900; font-size:1.05em; letter-spacing:0.02em;">
+                            {dt_real}
+                        </td>
+                        <td style="padding:13px 16px; text-align:center; color:#e2e8f0; font-size:0.95em; font-weight:600;">
+                            {UR:.0f}<span style="color:#94a3b8; font-size:0.8em; margin-left:2px;">%</span>
+                        </td>
+                        <td style="padding:13px 16px; text-align:center; color:#e2e8f0; font-size:0.95em; font-weight:600;">
+                            {V:.1f}<span style="color:#94a3b8; font-size:0.8em; margin-left:2px;">km/h</span>
+                        </td>
+                        <td style="padding:13px 16px; text-align:center;">
+                            {badge}
+                        </td>
+                    </tr>
+                    """
+
+                # ---- TABELA COMPLETA COM CABEÇALHO PROFISSIONAL ----
+                tabela_completa = f"""
+                <style>
+                    @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600;700&display=swap');
+
+                    .tp-table-wrapper {{
+                        font-family: 'IBM Plex Sans', sans-serif;
+                        background: #0a0f1e;
+                        border-radius: 14px;
+                        overflow: hidden;
+                        border: 1px solid rgba(255,255,255,0.08);
+                        box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(74,222,128,0.05);
+                    }}
+
+                    .tp-table-wrapper table {{
+                        width: 100%;
+                        border-collapse: collapse;
+                    }}
+
+                    .tp-table-wrapper thead tr {{
+                        background: linear-gradient(90deg, #0d1f12, #0a1a2e);
+                        border-bottom: 2px solid rgba(74,222,128,0.25);
+                    }}
+
+                    .tp-table-wrapper thead th {{
+                        padding: 14px 16px;
+                        text-align: center;
+                        font-size: 0.7em;
+                        font-weight: 700;
+                        letter-spacing: 0.12em;
+                        text-transform: uppercase;
+                        color: #6b7280;
+                    }}
+
+                    .tp-table-wrapper thead th.col-dt {{
+                        color: #4ade80;
+                    }}
+
+                    .tp-table-wrapper tbody tr:hover {{
+                        background: rgba(255,255,255,0.04) !important;
+                    }}
+
+                    .tp-table-wrapper tbody tr:last-child {{
+                        border-bottom: none !important;
+                    }}
+                </style>
+
+                <div class="tp-table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>🕐 Hora</th>
+                                <th>🌡️ Temp</th>
+                                <th class="col-dt">⬦ Delta T</th>
+                                <th>💧 Umid</th>
+                                <th>💨 Vento</th>
+                                <th>● Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {linhas_html}
+                        </tbody>
+                    </table>
+                </div>
+                """
+
+                components.html(tabela_completa, height=900, scrolling=True)
+
             else:
-                st.error("Erro ao localizar coordenadas da cidade.")
+                st.error("Cidade não localizada.")
         except Exception as e:
-            st.error("Erro na conexão meteorológica.")
-    else:
-        st.error("⚠️ Selecione Estado, Cidade e Produto primeiro.")
+            st.error(f"Erro no cálculo: {e}")
