@@ -304,13 +304,18 @@ def pagina_login():
 
     # ── ABA 2: CADASTRO ──
     with t2:
-        n_cad      = st.text_input("Nome Completo",       key="cad_nome")
-        e_cad      = st.text_input("E-mail",              key="cad_email").strip().lower()
-        s_cad      = st.text_input("Senha",      type="password", key="cad_senha")
-        s_cad_conf = st.text_input("Confirme a Senha", type="password", key="cad_conf_senha")
+        st.text_input("Nome Completo",    key="cad_nome")
+        st.text_input("E-mail",           key="cad_email")
+        st.text_input("Senha",            type="password", key="cad_senha")
+        st.text_input("Confirme a Senha", type="password", key="cad_conf_senha")
 
-        # BOTÃO DENTRO DA ABA — erro original estava fora do bloco with t2
         if st.button("FINALIZAR CADASTRO", type="primary", key="btn_cadastro"):
+            # Lê sempre do session_state para garantir valor atualizado
+            n_cad      = st.session_state.get("cad_nome", "").strip()
+            e_cad      = st.session_state.get("cad_email", "").strip().lower()
+            s_cad      = st.session_state.get("cad_senha", "")
+            s_cad_conf = st.session_state.get("cad_conf_senha", "")
+
             if not n_cad or not e_cad or not s_cad or not s_cad_conf:
                 st.error("⚠️ Por favor, preencha todos os campos.")
             elif len(s_cad) < 6:
@@ -322,7 +327,7 @@ def pagina_login():
             else:
                 sucesso = registrar_usuario_google_forms(n_cad, e_cad, hash_senha(s_cad))
                 if sucesso:
-                    st.session_state.autenticado   = True
+                    st.session_state.autenticado    = True
                     st.session_state.usuario_logado = e_cad
                     st.query_params["u"] = e_cad
                     st.success("✅ Conta criada com sucesso!")
