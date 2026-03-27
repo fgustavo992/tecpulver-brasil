@@ -5,6 +5,11 @@ import requests
 from datetime import datetime
 import os
 import math
+import hashlib
+import secrets
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 # --- 1. CONFIGURAÇÃO E IDENTIDADE VISUAL ---
 st.set_page_config(page_title="TecPulver Brasil", layout="centered", page_icon="🟢")
@@ -65,14 +70,127 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # --- 2. FUNÇÕES DE SUPORTE ---
-def registrar_usuario_csv(nome, email):
+
+def hash_senha(senha):
+    """Gera hash SHA-256 da senha."""
+    return hashlib.sha256(senha.encode('utf-8')).hexdigest()
+
+def registrar_usuario_csv(nome, email, senha_hash):
     arquivo = 'usuarios_cadastrados.csv'
     data_hora = datetime.now().strftime("%d/%m/%Y %H:%M")
-    novo_log = pd.DataFrame([[data_hora, nome, email]], columns=['Data', 'Nome', 'Email'])
+    novo_log = pd.DataFrame(
+        [[data_hora, nome, email, senha_hash]],
+        columns=['Data', 'Nome', 'Email', 'SenhaHash']
+    )
     if not os.path.isfile(arquivo):
         novo_log.to_csv(arquivo, index=False, sep=';', encoding='utf-8-sig')
     else:
         novo_log.to_csv(arquivo, mode='a', index=False, header=False, sep=';', encoding='utf-8-sig')
+
+def carregar_usuarios():
+    """Carrega o CSV de usuários como DataFrame. Retorna None se não existir."""
+    arquivo = 'usuarios_cadastrados.csv'
+    if os.path.exists(arquivo):
+        try:
+            df = pd.read_csv(arquivo, sep=';', encoding='utf-8-sig')
+            # Garante coluna SenhaHash mesmo em CSVs antigos (sem senha)
+            if 'SenhaHash' not in df.columns:
+                df['SenhaHash'] = ''
+            return df
+        except Exception:
+            return None
+    return None
+
+def email_existe(email):
+    """Verifica se o email já está cadastrado."""
+    df = carregar_usuarios()
+    if df is None:
+        return False
+    return email.strip().lower() in df['Email'].str.strip().str.lower().values
+
+def validar_login(email, senha):
+    """Valida email e senha. Retorna True se correto."""
+    df = carregar_usuarios()
+    if df is None:
+        return False
+    email_norm = email.strip().lower()
+    linha = df[df['Email'].str.strip().str.lower() == email_norm]
+    if linha.empty:
+        return False
+    senha_hash_armazenada = linha.iloc[0]['SenhaHash']
+    # Compatibilidade: se não há hash salvo (usuário antigo), aceita qualquer senha
+    if pd.isna(senha_hash_armazenada) or str(senha_hash_armazenada).strip() == '':
+        return True
+    return hash_senha(senha) == str(senha_hash_armazenada).strip()
+
+def salvar_nova_senha(email, nova_senha_hash):
+    """Atualiza a senha de um usuário no CSV."""
+    arquivo = 'usuarios_cadastrados.csv'
+    df = carregar_usuarios()
+    if df is None:
+        return False
+    email_norm = email.strip().lower()
+    mask = df['Email'].str.strip().str.lower() == email_norm
+    if not mask.any():
+        return False
+    df.loc[mask, 'SenhaHash'] = nova_senha_hash
+    df.to_csv(arquivo, index=False, sep=';', encoding='utf-8-sig')
+    return True
+
+def gerar_token():
+    """Gera token seguro de redefinição de senha."""
+    return secrets.token_urlsafe(32)
+
+def enviar_email_redefinicao(email_destino, token):
+    """Envia email de redefinição de senha via Gmail SMTP."""
+    try:
+        gmail_user = st.secrets["gmail"]["usuario"]
+        gmail_pass = st.secrets["gmail"]["senha_app"]
+    except Exception:
+        return False, "Credenciais de email não configuradas nos Secrets do Streamlit."
+
+    link = f"https://tecpulver-brasil.streamlit.app/?reset_token={token}&email={email_destino}"
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = "🔐 TecPulver Brasil — Redefinição de Senha"
+    msg["From"] = gmail_user
+    msg["To"] = email_destino
+
+    corpo_html = f"""
+    <html>
+    <body style="background:#0a0f1e; font-family: sans-serif; padding: 30px;">
+        <div style="max-width:480px; margin:auto; background:#111827; border-radius:14px;
+                    border:1px solid rgba(74,222,128,0.2); padding:30px;">
+            <h2 style="color:#4ade80; margin-top:0;">🌿 TecPulver Brasil</h2>
+            <p style="color:#e2e8f0;">Recebemos uma solicitação para redefinir a senha da sua conta.</p>
+            <p style="color:#e2e8f0;">Clique no botão abaixo para criar uma nova senha:</p>
+            <a href="{link}" style="
+                display:inline-block; margin:20px 0;
+                background:linear-gradient(135deg,#14532d,#166534);
+                color:#bbf7d0; padding:14px 28px; border-radius:10px;
+                text-decoration:none; font-weight:700; font-size:1em;
+                border:1px solid rgba(74,222,128,0.3);">
+                🔑 Redefinir Minha Senha
+            </a>
+            <p style="color:#6b7280; font-size:0.8em;">
+                Este link expira em 1 hora. Se você não solicitou a redefinição, ignore este email.
+            </p>
+            <hr style="border-color:rgba(255,255,255,0.08); margin-top:20px;">
+            <p style="color:#374151; font-size:0.75em;">TecPulver Brasil — Monitoramento Agronômico</p>
+        </div>
+    </body>
+    </html>
+    """
+
+    msg.attach(MIMEText(corpo_html, "html"))
+
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(gmail_user, gmail_pass)
+            server.sendmail(gmail_user, email_destino, msg.as_string())
+        return True, "ok"
+    except Exception as e:
+        return False, str(e)
 
 @st.cache_data
 def carregar_produtos_turbo(classe):
@@ -94,9 +212,49 @@ def carregar_produtos_turbo(classe):
             return [f"Erro na leitura: {arquivo}"]
     return [f"Arquivo {arquivo} não encontrado na pasta"]
 
-# --- 3. SISTEMA DE ACESSO COM PERSISTÊNCIA (TELA DE LOGIN) ---
+# --- 3. FLUXO DE REDEFINIÇÃO DE SENHA VIA TOKEN NA URL ---
+params = st.query_params
+
+# Armazena tokens de redefinição na sessão: {token: email}
+if 'reset_tokens' not in st.session_state:
+    st.session_state.reset_tokens = {}
+
+reset_token_url = params.get("reset_token", "")
+reset_email_url = params.get("email", "")
+
+if reset_token_url and reset_email_url:
+    token_valido = st.session_state.reset_tokens.get(reset_token_url) == reset_email_url.strip().lower()
+
+    st.markdown("<h2 style='text-align:center; color:white;'>🔑 Redefinir Senha</h2>", unsafe_allow_html=True)
+
+    if not token_valido:
+        st.error("❌ Link inválido ou expirado. Solicite um novo link na tela de login.")
+        if st.button("⬅️ Voltar ao Login"):
+            st.query_params.clear()
+            st.rerun()
+    else:
+        nova1 = st.text_input("Nova senha:", type="password", placeholder="Mínimo 6 caracteres")
+        nova2 = st.text_input("Confirmar nova senha:", type="password", placeholder="Repita a senha")
+        if st.button("✅ SALVAR NOVA SENHA", type="primary"):
+            if not nova1 or not nova2:
+                st.error("Preencha os dois campos.")
+            elif len(nova1) < 6:
+                st.error("A senha deve ter pelo menos 6 caracteres.")
+            elif nova1 != nova2:
+                st.error("As senhas não coincidem.")
+            else:
+                ok = salvar_nova_senha(reset_email_url, hash_senha(nova1))
+                if ok:
+                    del st.session_state.reset_tokens[reset_token_url]
+                    st.success("✅ Senha redefinida com sucesso! Faça login agora.")
+                    st.query_params.clear()
+                    st.rerun()
+                else:
+                    st.error("Erro ao salvar senha. Verifique se o email está cadastrado.")
+    st.stop()
+
+# --- 4. SISTEMA DE ACESSO COM PERSISTÊNCIA, SENHA E RECUPERAÇÃO ---
 if 'autenticado' not in st.session_state:
-    params = st.query_params
     if params.get("u"):
         st.session_state.autenticado = True
         st.session_state.usuario_logado = params["u"]
@@ -104,6 +262,7 @@ if 'autenticado' not in st.session_state:
         st.session_state.autenticado = False
 
 if not st.session_state.autenticado:
+    # Renderização do Logo (Mantendo seu estilo)
     html_simbolo_grande = """
     <div style='display: flex; justify-content: center; align-items: center; margin-bottom: 25px;'>
         <svg width="100" height="100" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" style='filter: drop-shadow(0px 0px 10px rgba(255,255,255,0.3));'>
@@ -115,39 +274,76 @@ if not st.session_state.autenticado:
     """
     st.markdown(html_simbolo_grande, unsafe_allow_html=True)
     st.markdown("<h1 style='text-align:center; color: white; margin-bottom: 30px;'>TecPulver Brasil</h1>", unsafe_allow_html=True)
-    
-    t1, t2 = st.tabs(["🔐 Entrar", "📝 Criar Conta"])
+
+    # Criação das 3 abas solicitadas
+    t1, t2, t3 = st.tabs(["🔐 Entrar", "📝 Criar Conta", "🔑 Recuperar"])
 
     with t1:
-        e_in = st.text_input("E-mail:", key="e_login", placeholder="seu@email.com")
-        s_in = st.text_input("Senha:", type="password", placeholder="******")
-        manter = st.checkbox("Manter-se conectado", value=True)
+        e_login = st.text_input("E-mail:", key="e_login_input", placeholder="seu@email.com").strip().lower()
+        s_login = st.text_input("Senha:", type="password", key="s_login_input", placeholder="******")
+        manter = st.checkbox("Manter-se conectado", value=True, key="check_manter")
+
         if st.button("ACESSAR PLATAFORMA", type="primary"):
-            if e_in and s_in:
-                st.session_state.autenticado = True
-                st.session_state.usuario_logado = e_in.strip().lower()
-                if manter:
-                    st.query_params["u"] = e_in.strip().lower()
-                st.rerun()
+            if e_login and s_login:
+                if validar_login(e_login, s_login):
+                    st.session_state.autenticado = True
+                    st.session_state.usuario_logado = e_login
+                    if manter:
+                        st.query_params["u"] = e_login
+                    st.success("Acesso liberado!")
+                    st.rerun()
+                else:
+                    st.error("❌ E-mail ou senha incorretos.")
             else:
-                st.error("Por favor, preencha e-mail e senha.")
+                st.error("Preencha todos os campos.")
 
     with t2:
         n_cad = st.text_input("Nome Completo:", placeholder="Felipe Santos")
-        e_cad = st.text_input("E-mail:", key="e_cad", placeholder="felipe@exemplo.com")
+        e_cad = st.text_input("E-mail para cadastro:", key="e_cad_input", placeholder="felipe@exemplo.com").strip().lower()
+        s_cad = st.text_input("Criar Senha:", type="password", key="s_cad_input", placeholder="Mínimo 6 caracteres")
+        s_cad_conf = st.text_input("Confirmar Senha:", type="password", key="s_cad_conf_input", placeholder="Repita a senha")
+
         if st.button("FINALIZAR CADASTRO", type="secondary"):
-            if n_cad and e_cad:
-                registrar_usuario_csv(n_cad, e_cad)
-                st.session_state.autenticado = True
-                st.session_state.usuario_logado = e_cad.strip().lower()
-                st.query_params["u"] = e_cad.strip().lower()
-                st.rerun()
+            if not n_cad or not e_cad or not s_cad or not s_cad_conf:
+                st.error("⚠️ Por favor, preencha todos os campos.")
+            elif len(s_cad) < 6:
+                st.error("⚠️ A senha deve ter no mínimo 6 caracteres.")
+            elif s_cad != s_cad_conf:
+                st.error("❌ As senhas não coincidem. Tente novamente.")
+            elif email_existe(e_cad):
+                st.error("❌ Este e-mail já está cadastrado.")
             else:
-                st.error("Por favor, preencha Nome e E-mail.")
-    
+                # Usa a função que você já tem para salvar o hash
+                registrar_usuario_csv(n_cad, e_cad, hash_senha(s_cad))
+                st.session_state.autenticado = True
+                st.session_state.usuario_logado = e_cad
+                st.query_params["u"] = e_cad # Persistência automática no cadastro
+                st.success("✅ Conta criada com sucesso!")
+                st.rerun()
+
+    with t3:
+        st.markdown("<h3 style='text-align:center;'>Recuperar Acesso</h3>", unsafe_allow_html=True)
+        email_rec = st.text_input("Informe seu e-mail cadastrado:", key="e_rec_input").strip().lower()
+        
+        if st.button("📨 ENVIAR LINK DE REDEFINIÇÃO", type="primary"):
+            if email_rec:
+                if email_existe(email_rec):
+                    token = gerar_token()
+                    st.session_state.reset_tokens[token] = email_rec
+                    sucesso, msg_erro = enviar_email_redefinicao(email_rec, token)
+                    if sucesso:
+                        st.success("✅ E-mail enviado! Verifique sua caixa de entrada.")
+                    else:
+                        st.error(f"Erro ao enviar e-mail: {msg_erro}")
+                else:
+                    # Mensagem genérica por segurança
+                    st.info("Se este e-mail estiver cadastrado, um link será enviado.")
+            else:
+                st.error("Informe um e-mail válido.")
+
     st.stop()
 
-# --- 4. BARRA LATERAL ---
+# --- 5. BARRA LATERAL ---
 with st.sidebar:
     st.write(f"👤 **{st.session_state.usuario_logado}**")
     st.divider()
@@ -169,26 +365,40 @@ with st.sidebar:
         st.query_params.clear()
         st.rerun()
 
-# --- 5. MODO GESTOR ---
-if st.session_state.usuario_logado == "felipe_fgd_@hotmail.com":
+# --- 6. MODO GESTOR ---
+if st.session_state.usuario_logado == "fgustavo992@gmail.com":
     st.warning("🛠️ MODO GESTOR ATIVADO")
-    if os.path.exists('usuarios_cadastrados.csv'):
-        df_gestor = pd.read_csv('usuarios_cadastrados.csv', sep=';')
-        st.download_button("📥 BAIXAR LISTA DE USUÁRIOS (CSV)", df_gestor.to_csv(index=False, sep=';', encoding='utf-8-sig'), "relatorio_usuarios.csv", "text/csv", use_container_width=True)
-        df_novos = df_gestor.copy()
-        df_novos['Data'] = pd.to_datetime(df_novos['Data'], format='%d/%m/%Y %H:%M', errors='coerce')
-        data_corte = pd.Timestamp.now() - pd.Timedelta(days=7)
-        df_novos = df_novos[df_novos['Data'] >= data_corte]
+    df_gestor = carregar_usuarios() # Usa a função que já criamos para evitar erros
+    
+    if df_gestor is not None and not df_gestor.empty:
         st.download_button(
-            "🆕 BAIXAR NOVOS USUÁRIOS (ÚLTIMOS 7 DIAS)",
-            df_novos.to_csv(index=False, sep=';', encoding='utf-8-sig'),
-            "novos_usuarios.csv",
-            "text/csv",
+            "📥 BAIXAR LISTA DE USUÁRIOS (CSV)", 
+            df_gestor.to_csv(index=False, sep=';', encoding='utf-8-sig'), 
+            "relatorio_usuarios.csv", 
+            "text/csv", 
             use_container_width=True
         )
+        
+        try:
+            df_novos = df_gestor.copy()
+            df_novos['Data'] = pd.to_datetime(df_novos['Data'], dayfirst=True, errors='coerce')
+            data_corte = pd.Timestamp.now() - pd.Timedelta(days=7)
+            df_novos = df_novos[df_novos['Data'] >= data_corte]
+            
+            st.download_button(
+                "🆕 BAIXAR NOVOS USUÁRIOS (ÚLTIMOS 7 DIAS)",
+                df_novos.to_csv(index=False, sep=';', encoding='utf-8-sig'),
+                "novos_usuarios.csv",
+                "text/csv",
+                use_container_width=True
+            )
+        except:
+            st.info("Filtro de data indisponível no momento.")
+    else:
+        st.info("Nenhum usuário cadastrado no novo sistema ainda.")
     st.divider()
 
-# --- 6. CABEÇALHO ---
+# --- 7. CABEÇALHO ---
 header_container = st.container()
 
 with header_container:
@@ -221,7 +431,7 @@ with header_container:
 
 st.divider()
 
-# --- 7. FORMULÁRIO TÉCNICO ---
+# --- 8. FORMULÁRIO TÉCNICO ---
 uf_sel = st.selectbox("📍 ESTADO (UF):",
                       options=["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"],
                       index=None, placeholder="Digite aqui...")
@@ -245,7 +455,7 @@ tipo_app = st.radio("🚜 MODALIDADE:", ["Terrestre", "Aérea"], horizontal=True
 
 st.divider()
 
-# --- 8. EXECUÇÃO DA ANÁLISE ---
+# --- 9. EXECUÇÃO DA ANÁLISE ---
 if st.button("VERIFICAR CONDIÇÕES AGORA", type="primary"):
     if uf_sel and cid_sel and prod_sel:
         try:
@@ -280,7 +490,6 @@ if st.button("VERIFICAR CONDIÇÕES AGORA", type="primary"):
 
                     cor_dt = "#4ade80" if 2.0 <= dt_real <= 8.0 else "#f87171"
 
-                    # Row background alternado + highlight se ideal
                     row_bg = "rgba(74,222,128,0.06)" if ideal else "rgba(255,255,255,0.02)"
                     row_border = "1px solid rgba(74,222,128,0.15)" if ideal else "1px solid rgba(255,255,255,0.05)"
 
@@ -346,7 +555,6 @@ if st.button("VERIFICAR CONDIÇÕES AGORA", type="primary"):
                     </tr>
                     """
 
-                # ---- TABELA COMPLETA COM CABEÇALHO PROFISSIONAL ----
                 tabela_completa = f"""
                 <style>
                     @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600;700&display=swap');
