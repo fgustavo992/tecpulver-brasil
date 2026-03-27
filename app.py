@@ -354,27 +354,23 @@ if not st.session_state.autenticado:
                     st.rerun()
                 else:
                     st.error("❌ Erro ao salvar cadastro na nuvem. Verifique sua conexão.")
-    with t3:
-        st.markdown("<h3 style='text-align:center;'>Recuperar Acesso</h3>", unsafe_allow_html=True)
-        email_rec = st.text_input("Informe seu e-mail cadastrado:", key="e_rec_input").strip().lower()
+    with t3: # Aba de Recuperar
+        st.subheader("🔑 Recuperar Acesso")
+        st.write("Insira seu e-mail abaixo para validar sua conta.")
         
-        if st.button("📨 ENVIAR LINK DE REDEFINIÇÃO", type="primary"):
-            if email_rec:
-                if email_existe(email_rec):
-                    token = gerar_token()
-                    st.session_state.reset_tokens[token] = email_rec
-                    sucesso, msg_erro = enviar_email_redefinicao(email_rec, token)
-                    if sucesso:
-                        st.success("✅ E-mail enviado! Verifique sua caixa de entrada.")
-                    else:
-                        st.error(f"Erro ao enviar e-mail: {msg_erro}")
-                else:
-                    # Mensagem genérica por segurança
-                    st.info("Se este e-mail estiver cadastrado, um link será enviado.")
-            else:
-                st.error("Informe um e-mail válido.")
+        email_rec = st.text_input("E-mail de cadastro:", key="e_rec_input", placeholder="seu@email.com").strip().lower()
 
-    st.stop()
+        # AQUI VOCÊ MUDA O NOME DO BOTÃO:
+        if st.button("SOLICITAR RECUPERAÇÃO", type="primary", key="btn_recuperar_aba"):
+            if not email_rec:
+                st.error("⚠️ Por favor, digite o seu e-mail.")
+            else:
+                # Verifica na planilha se o e-mail existe
+                if email_existe(email_rec):
+                    st.success(f"✅ O e-mail {email_rec} foi localizado em nossa base!")
+                    st.info("⚠️ Como este é um app de demonstração, entre em contato com o suporte para redefinir sua senha manualmente.")
+                else:
+                    st.error("❌ Este e-mail não consta em nossa base de produtores.")
 
 # --- 5. BARRA LATERAL ---
 with st.sidebar:
