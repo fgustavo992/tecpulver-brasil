@@ -15,11 +15,7 @@ from email.mime.multipart import MIMEMultipart
 if "autenticado" not in st.session_state:
     st.session_state.autenticado = False
 
-if "usuario_logado" not in st.session_state:
-    st.session_state.usuario_logado = None  # Começa vazio para não dar erro
 
-if "usuario_logado" not in st.session_state:
-    st.session_state.usuario_logado = None  # Começa vazio para não dar erro
 # --- 1. CONFIGURAÇÃO E IDENTIDADE VISUAL ---
 st.set_page_config(page_title="TecPulver Brasil", layout="centered", page_icon="🟢")
 
