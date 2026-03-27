@@ -11,6 +11,15 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
+# --- INICIALIZAÇÃO DO ESTADO DO SISTEMA ---
+if "autenticado" not in st.session_state:
+    st.session_state.autenticado = False
+
+if "usuario_logado" not in st.session_state:
+    st.session_state.usuario_logado = None  # Começa vazio para não dar erro
+
+if "usuario_logado" not in st.session_state:
+    st.session_state.usuario_logado = None  # Começa vazio para não dar erro
 # --- 1. CONFIGURAÇÃO E IDENTIDADE VISUAL ---
 st.set_page_config(page_title="TecPulver Brasil", layout="centered", page_icon="🟢")
 
@@ -374,8 +383,21 @@ if not st.session_state.autenticado:
 
 # --- 5. BARRA LATERAL ---
 with st.sidebar:
-    st.write(f"👤 **{st.session_state.usuario_logado}**")
+    # Verificamos se o usuário existe antes de tentar mostrar na tela
+    usuario = st.session_state.get("usuario_logado")
+    
+    if usuario:
+        st.write(f"👤 **{usuario}**")
+    else:
+        st.write("👤 **Usuário não identificado**")
+        
     st.divider()
+    
+    # Se quiser colocar o botão de sair logo abaixo:
+    if st.button("Sair"):
+        st.session_state.autenticado = False
+        st.session_state.usuario_logado = None
+        st.rerun()
 with st.sidebar:
     st.markdown("### 📱 Instalar no Celular")
     if st.checkbox("Como instalar?"):
