@@ -75,42 +75,49 @@ def hash_senha(senha):
     """Gera hash SHA-256 da senha."""
     return hashlib.sha256(senha.encode('utf-8')).hexdigest()
 
-def registrar_usuario_csv(nome, email, senha_hash):
-    arquivo = 'usuarios_cadastrados.csv'
-    data_hora = datetime.now().strftime("%d/%m/%Y %H:%M")
-    novo_log = pd.DataFrame(
-        [[data_hora, nome, email, senha_hash]],
-        columns=['Data', 'Nome', 'Email', 'SenhaHash']
-    )
-    if not os.path.isfile(arquivo):
-        novo_log.to_csv(arquivo, index=False, sep=';', encoding='utf-8-sig')
-    else:
-        novo_log.to_csv(arquivo, mode='a', index=False, header=False, sep=';', encoding='utf-8-sig')
-
-def carregar_usuarios():
-    """Carrega o CSV de usuários como DataFrame. Retorna None se não existir."""
-    arquivo = 'usuarios_cadastrados.csv'
-    if os.path.exists(arquivo):
-        try:
-            df = pd.read_csv(arquivo, sep=';', encoding='utf-8-sig')
-            # Garante coluna SenhaHash mesmo em CSVs antigos (sem senha)
-            if 'SenhaHash' not in df.columns:
-                df['SenhaHash'] = ''
-            return df
-        except Exception:
-            return None
-    return None
-
-def email_existe(email):
-    """Verifica se o email já está cadastrado."""
-    df = carregar_usuarios()
-    if df is None:
+def registrar_usuario_google_forms(nome, email, senha_hash):
+    # Link direto para o processamento do formulário
+    url = "https://docs.google.com/forms/d/e/1FAIpQLScZpMscEMElHo7Ya-i4DzrVnN7Au6NP0EXbi44eJ3_YzPxBpA/formResponse"
+    
+    # Códigos extraídos do seu formulário original
+    dados = {
+        "entry.2045580665": nome,        # Campo Nome
+        "entry.1983084776": email,       # Campo Email
+        "entry.1492212937": senha_hash,  # Campo SenhaHash
+        "entry.1610425488": datetime.now().strftime("%d/%m/%Y %H:%M") # Campo Data
+    }
+    
+    try:
+        import requests
+        # Envia os dados para a planilha de forma silenciosa
+        requests.post(url, data=dados)
+        return True
+    except:
         return False
-    return email.strip().lower() in df['Email'].str.strip().str.lower().values
+def carregar_usuarios_planilha():
+    # Este é o seu link de publicação ajustado para leitura de dados
+    url_csv = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS6P99XsCL2-uu9QqDSCwWmgYyyk3h6cfoLw27FFvwMytxEyDT7EfMBOFVs5tyYj1kIuZyruXjU0_7h/pub?output=csv"
+    
+    try:
+        # Lê os dados da planilha em tempo real sem precisar de senhas complexas
+        df = pd.read_csv(url_csv)
+        # Remove espaços em branco dos nomes das colunas para evitar erros
+        df.columns = df.columns.str.strip()
+        return df
+    except Exception as e:
+        # Se der erro (ex: planilha sem dados ainda), retorna um DataFrame vazio
+        return pd.DataFrame()
+def email_existe(email):
+    df = carregar_usuarios_planilha()
+    if not df.empty and 'Email' in df.columns:
+        # O segredo é o .astype(str), que converte qualquer erro ou vazio em texto
+        lista_emails = df['Email'].astype(str).str.strip().str.lower().values
+        return email.strip().lower() in lista_emails
+    return False
 
 def validar_login(email, senha):
     """Valida email e senha. Retorna True se correto."""
-    df = carregar_usuarios()
+    df = carregar_usuarios_planilha()
     if df is None:
         return False
     email_norm = email.strip().lower()
@@ -126,7 +133,7 @@ def validar_login(email, senha):
 def salvar_nova_senha(email, nova_senha_hash):
     """Atualiza a senha de um usuário no CSV."""
     arquivo = 'usuarios_cadastrados.csv'
-    df = carregar_usuarios()
+    df = carregar_usuarios_planilha()
     if df is None:
         return False
     email_norm = email.strip().lower()
@@ -278,49 +285,75 @@ if not st.session_state.autenticado:
     # Criação das 3 abas solicitadas
     t1, t2, t3 = st.tabs(["🔐 Entrar", "📝 Criar Conta", "🔑 Recuperar"])
 
-    with t1:
+    with t1: # Aba de Login
         e_login = st.text_input("E-mail:", key="e_login_input", placeholder="seu@email.com").strip().lower()
         s_login = st.text_input("Senha:", type="password", key="s_login_input", placeholder="******")
         manter = st.checkbox("Manter-se conectado", value=True, key="check_manter")
 
         if st.button("ACESSAR PLATAFORMA", type="primary"):
-            if e_login and s_login:
-                if validar_login(e_login, s_login):
+            if not e_login or not s_login:
+                st.error("⚠️ Preencha todos os campos.")
+            else:
+                # Carrega da planilha (URL que termina em pub?output=csv)
+                df_usuarios = carregar_usuarios_planilha()
+                
+                if not df_usuarios.empty:
+                    # O SEGREDO ESTÁ AQUI: .astype(str) evita o erro que você teve
+                    try:
+                        # Filtra a planilha procurando o e-mail
+                        coluna_email = df_usuarios['Email'].astype(str).str.strip().str.lower()
+                        usuario_validado = df_usuarios[coluna_email == e_login]
+                        
+                        if not usuario_validado.empty:
+                            senha_gravada = str(usuario_validado.iloc[0]['SenhaHash']).strip()
+                            
+                            if hash_senha(s_login) == senha_gravada:
+                                st.session_state.autenticado = True
+                                st.session_state.usuario_logado = e_login
+                                if manter:
+                                    st.query_params["u"] = e_login
+                                st.success("✅ Acesso liberado!")
+                                st.rerun()
+                            else:
+                                st.error("❌ Senha incorreta.")
+                        else:
+                            st.error("❌ Usuário não encontrado.")
+                    except Exception as e:
+                        st.error(f"❌ Erro na estrutura da planilha: {e}")
+                else:
+                    st.error("❌ Base de dados vazia ou inacessível.")
+        # Esta é a aba de Cadastro
+    with t2: # Aba de Cadastro
+        # Verifique se os nomes antes do '=' batem com os nomes no 'if' abaixo
+        n_cad = st.text_input("Nome Completo", key="cad_nome")
+        e_cad = st.text_input("E-mail", key="cad_email").strip().lower()
+        s_cad = st.text_input("Senha", type="password", key="cad_senha")
+        s_cad_conf = st.text_input("Confirme a Senha", type="password", key="cad_conf_senha")
+
+    if st.button("FINALIZAR CADASTRO", type="secondary"):
+        # Aqui é onde o erro acontece se as variáveis acima tiverem nomes diferentes
+        if not n_cad or not e_cad or not s_cad or not s_cad_conf:
+            st.error("⚠️ Por favor, preencha todos os campos.")
+        elif len(s_cad) < 6:
+            st.error("⚠️ A senha deve ter no mínimo 6 caracteres.")
+        # ... resto do código
+        elif s_cad != s_cad_conf:
+                st.error("❌ As senhas não coincidem.")
+                 # Nota: A função email_existe ainda lerá o CSV antigo se não for atualizada
+        elif email_existe(e_cad):
+                st.error("❌ Este e-mail já está cadastrado.")
+        else:
+                # Chamada para a função que configuramos com os IDs do seu formulário
+                sucesso = registrar_usuario_google_forms(n_cad, e_cad, hash_senha(s_cad))
+                
+                if sucesso:
                     st.session_state.autenticado = True
-                    st.session_state.usuario_logado = e_login
-                    if manter:
-                        st.query_params["u"] = e_login
-                    st.success("Acesso liberado!")
+                    st.session_state.usuario_logado = e_cad
+                    st.query_params["u"] = e_cad
+                    st.success("✅ Conta criada com sucesso!")
                     st.rerun()
                 else:
-                    st.error("❌ E-mail ou senha incorretos.")
-            else:
-                st.error("Preencha todos os campos.")
-
-    with t2:
-        n_cad = st.text_input("Nome Completo:", placeholder="Felipe Santos")
-        e_cad = st.text_input("E-mail para cadastro:", key="e_cad_input", placeholder="felipe@exemplo.com").strip().lower()
-        s_cad = st.text_input("Criar Senha:", type="password", key="s_cad_input", placeholder="Mínimo 6 caracteres")
-        s_cad_conf = st.text_input("Confirmar Senha:", type="password", key="s_cad_conf_input", placeholder="Repita a senha")
-
-        if st.button("FINALIZAR CADASTRO", type="secondary"):
-            if not n_cad or not e_cad or not s_cad or not s_cad_conf:
-                st.error("⚠️ Por favor, preencha todos os campos.")
-            elif len(s_cad) < 6:
-                st.error("⚠️ A senha deve ter no mínimo 6 caracteres.")
-            elif s_cad != s_cad_conf:
-                st.error("❌ As senhas não coincidem. Tente novamente.")
-            elif email_existe(e_cad):
-                st.error("❌ Este e-mail já está cadastrado.")
-            else:
-                # Usa a função que você já tem para salvar o hash
-                registrar_usuario_csv(n_cad, e_cad, hash_senha(s_cad))
-                st.session_state.autenticado = True
-                st.session_state.usuario_logado = e_cad
-                st.query_params["u"] = e_cad # Persistência automática no cadastro
-                st.success("✅ Conta criada com sucesso!")
-                st.rerun()
-
+                    st.error("❌ Erro ao salvar cadastro na nuvem. Verifique sua conexão.")
     with t3:
         st.markdown("<h3 style='text-align:center;'>Recuperar Acesso</h3>", unsafe_allow_html=True)
         email_rec = st.text_input("Informe seu e-mail cadastrado:", key="e_rec_input").strip().lower()
@@ -365,39 +398,21 @@ with st.sidebar:
         st.query_params.clear()
         st.rerun()
 
-# --- 6. MODO GESTOR ---
-if st.session_state.usuario_logado == "fgustavo992@gmail.com":
-    st.warning("🛠️ MODO GESTOR ATIVADO")
-    df_gestor = carregar_usuarios() # Usa a função que já criamos para evitar erros
+# --- 6. MODO GESTOR (REFORMULADO PARA GOOGLE SHEETS) ---
+if st.session_state.usuario_logado in ["fgustavo992@gmail.com", "felipe_fgd_@hotmail.com"]:
+    st.markdown("---")
+    st.warning("🛠️ PAINEL DE CONTROLE DO GESTOR")
     
-    if df_gestor is not None and not df_gestor.empty:
-        st.download_button(
-            "📥 BAIXAR LISTA DE USUÁRIOS (CSV)", 
-            df_gestor.to_csv(index=False, sep=';', encoding='utf-8-sig'), 
-            "relatorio_usuarios.csv", 
-            "text/csv", 
-            use_container_width=True
-        )
-        
-        try:
-            df_novos = df_gestor.copy()
-            df_novos['Data'] = pd.to_datetime(df_novos['Data'], dayfirst=True, errors='coerce')
-            data_corte = pd.Timestamp.now() - pd.Timedelta(days=7)
-            df_novos = df_novos[df_novos['Data'] >= data_corte]
-            
-            st.download_button(
-                "🆕 BAIXAR NOVOS USUÁRIOS (ÚLTIMOS 7 DIAS)",
-                df_novos.to_csv(index=False, sep=';', encoding='utf-8-sig'),
-                "novos_usuarios.csv",
-                "text/csv",
-                use_container_width=True
-            )
-        except:
-            st.info("Filtro de data indisponível no momento.")
-    else:
-        st.info("Nenhum usuário cadastrado no novo sistema ainda.")
-    st.divider()
-
+    st.write("A base de dados agora é gerenciada via Google Sheets para maior segurança.")
+    
+    # Botão direto para a sua planilha
+    st.link_button(
+        "📊 ACESSAR BASE DE DADOS (GOOGLE SHEETS)", 
+        "https://docs.google.com/spreadsheets/d/1-ra4aDcLc_UDokHszNUGXRRWNUE9hQfuwsD18HPAy0Y/",
+        use_container_width=True
+    )
+    
+    st.info("Dica: Os novos cadastros feitos via Instagram aparecerão na planilha em tempo real.")
 # --- 7. CABEÇALHO ---
 header_container = st.container()
 
