@@ -83,17 +83,29 @@ def hash_senha(senha):
     return hashlib.sha256(senha.encode('utf-8')).hexdigest()
 
 def registrar_usuario_google_forms(nome, email, senha_hash):
+    # URL de resposta do seu formulário (Verifique se este ID está correto)
     url = "https://docs.google.com/forms/d/e/1FAIpQLScZpMscEMElHo7Ya-i4DzrVnN7Au6NP0EXbi44eJ3_YzPxBpA/formResponse"
+    
+    # IMPORTANTE: Verifique se esses IDs (entry.xxxx) batem EXATAMENTE com o seu formulário
+    # Se você mudou algo no Google Forms, esses números mudam!
     dados = {
-        "entry.2045580665": nome,
-        "entry.1983084776": email,
-        "entry.1492212937": senha_hash,
-        "entry.1610425488": datetime.now().strftime("%d/%m/%Y %H:%M")
+        "entry.2045580665": str(nome),          # Campo Nome
+        "entry.1983084776": str(email),         # Campo Email
+        "entry.1492212937": str(senha_hash),    # Campo SenhaHash
+        "entry.1610425488": datetime.now().strftime("%d/%m/%Y %H:%M:%S") # Data com segundos para não grudar
     }
+    
+    headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+    
     try:
-        requests.post(url, data=dados)
-        return True
-    except:
+        # Enviamos como uma requisição POST de formulário
+        resposta = requests.post(url, data=dados, headers=headers, timeout=10)
+        
+        # O Google Forms retorna 200 mesmo se os IDs estiverem errados, 
+        # mas os dados só aparecem na planilha se os IDs forem idênticos.
+        return resposta.ok
+    except Exception as e:
+        print(f"Erro ao registrar: {e}")
         return False
 
 def carregar_usuarios_planilha():
@@ -618,3 +630,4 @@ if st.session_state.autenticado:
     pagina_principal()
 else:
     pagina_login()
+
