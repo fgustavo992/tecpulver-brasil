@@ -65,7 +65,7 @@ st.markdown("""
         background-color: #c0392b !important;
     }
     .stSelectbox label, .stRadio label, p, h3, h4, span, h1, h2 { color: #ffffff !important; font-weight: 600 !important; }
-    #MainMenu, footer, header {visibility: hidden;}
+    #MainMenu, footer, header {visibility: hidden !important;}
     </style>
     """, unsafe_allow_html=True)
 
@@ -83,33 +83,27 @@ def hash_senha(senha):
     return hashlib.sha256(senha.encode('utf-8')).hexdigest()
 
 def registrar_usuario_google_forms(nome, email, senha_hash):
-    # URL de resposta do seu formulário (Verifique se este ID está correto)
     url = "https://docs.google.com/forms/d/e/1FAIpQLScZpMscEMElHo7Ya-i4DzrVnN7Au6NP0EXbi44eJ3_YzPxBpA/formResponse"
-    
-    # IMPORTANTE: Verifique se esses IDs (entry.xxxx) batem EXATAMENTE com o seu formulário
-    # Se você mudou algo no Google Forms, esses números mudam!
     dados = {
-        "entry.2045580665": str(nome),          # Campo Nome
-        "entry.1983084776": str(email),         # Campo Email
-        "entry.1492212937": str(senha_hash),    # Campo SenhaHash
-        "entry.1610425488": datetime.now().strftime("%d/%m/%Y %H:%M:%S") # Data com segundos para não grudar
+        "entry.7570846": nome,
+        "entry.1437083228": email,
+        "entry.519648678": senha_hash,
     }
-    
-    headers = {'Content-Type': 'application/x-www-form-urlencoded'}
-    
     try:
-        # Enviamos como uma requisição POST de formulário
-        resposta = requests.post(url, data=dados, headers=headers, timeout=10)
-        
-        # O Google Forms retorna 200 mesmo se os IDs estiverem errados, 
-        # mas os dados só aparecem na planilha se os IDs forem idênticos.
-        return resposta.ok
+        resposta = requests.post(url, data=dados, timeout=10)
+        if resposta.ok:
+            return True
+        else:
+            st.error(f"⚠️ Erro no servidor do Google: {resposta.status_code}")
+            return False
     except Exception as e:
-        print(f"Erro ao registrar: {e}")
+        st.error(f"❌ Falha na conexão com o banco de dados: {e}")
         return False
 
 def carregar_usuarios_planilha():
-    url_csv = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS6P99XsCL2-uu9QqDSCwWmgYyyk3h6cfoLw27FFvwMytxEyDT7EfMBOFVs5tyYj1kIuZyruXjU0_7h/pub?output=csv"
+    import random
+    n = random.randint(1, 100000)
+    url_csv = f"https://docs.google.com/spreadsheets/d/e/2PACX-1vS6P99XsCL2-uu9QqDSCwWmgYyyk3h6cfoLw27FFvwMytxEyDT7EfMBOFVs5tyYj1kIuZyruXjU0_7h/pub?output=csv&x={n}"
     try:
         df = pd.read_csv(url_csv)
         df.columns = df.columns.str.strip()
@@ -262,7 +256,7 @@ def pagina_login():
                         st.rerun()
                     else:
                         st.error("Erro ao salvar senha. Verifique se o email está cadastrado.")
-        return  # Para aqui, não renderiza o resto da página
+        return
 
     # --- LOGO ---
     html_logo = """
@@ -279,73 +273,82 @@ def pagina_login():
     st.markdown("<h1 style='text-align:center; color: white; margin-bottom: 30px;'>TecPulver Brasil</h1>",
                 unsafe_allow_html=True)
 
+    # --- ABAS ---
     t1, t2, t3 = st.tabs(["🔐 Entrar", "📝 Criar Conta", "🔑 Recuperar"])
 
     # ── ABA 1: LOGIN ──
     with t1:
-        e_login = st.text_input("E-mail:", key="e_login_input", placeholder="seu@email.com").strip().lower()
-        s_login = st.text_input("Senha:", type="password", key="s_login_input", placeholder="******")
-        manter  = st.checkbox("Manter-se conectado", value=True, key="check_manter")
+        campo_email = st.text_input("E-mail:", key="e_login_input", placeholder="seu@email.com")
+        campo_senha = st.text_input("Senha:", type="password", key="s_login_input", placeholder="******")
+        manter = st.checkbox("Manter-se conectado", value=True, key="check_manter")
+        if st.button("ACESSAR PLATAFORMA", type="primary"):
+            e_login = campo_email.strip().lower()
+            s_login = campo_senha.strip()
 
-        if st.button("ACESSAR PLATAFORMA", type="primary", key="btn_login"):
             if not e_login or not s_login:
                 st.error("⚠️ Preencha todos os campos.")
             else:
-                df_usuarios = carregar_usuarios_planilha()
-                if not df_usuarios.empty:
-                    try:
-                        coluna_email   = df_usuarios['Email'].astype(str).str.strip().str.lower()
-                        usuario_valido = df_usuarios[coluna_email == e_login]
-                        if not usuario_valido.empty:
-                            senha_gravada = str(usuario_valido.iloc[0]['SenhaHash']).strip()
-                            if hash_senha(s_login) == senha_gravada:
-                                st.session_state.autenticado  = True
+                with st.spinner("Validando acesso..."):
+                    df_usuarios = carregar_usuarios_planilha()
+
+                    if not df_usuarios.empty:
+                        df_usuarios['Email'] = df_usuarios['Email'].astype(str).str.strip().str.lower()
+                        usuario_validado = df_usuarios[df_usuarios['Email'] == e_login]
+
+                        if not usuario_validado.empty:
+                            senha_gravada = str(usuario_validado.iloc[0]['SenhaHash']).strip()
+                            senha_digitada_hash = hash_senha(s_login)
+
+                            if senha_digitada_hash == senha_gravada:
+                                st.session_state.autenticado = True
                                 st.session_state.usuario_logado = e_login
-                                if manter:
+
+                                # Manter conectado: salva na URL para persistir
+                                if st.session_state.get("check_manter"):
                                     st.query_params["u"] = e_login
+
                                 st.success("✅ Acesso liberado!")
                                 st.rerun()
                             else:
                                 st.error("❌ Senha incorreta.")
                         else:
-                            st.error("❌ Usuário não encontrado.")
-                    except Exception as e:
-                        st.error(f"❌ Erro na estrutura da planilha: {e}")
-                else:
-                    st.error("❌ Base de dados vazia ou inacessível.")
+                            st.error(f"❌ O e-mail '{e_login}' não foi encontrado.")
+                    else:
+                        st.error("❌ Erro ao conectar com a base de dados. Tente novamente.")
 
     # ── ABA 2: CADASTRO ──
     with t2:
-        st.text_input("Nome Completo",    key="cad_nome")
-        st.text_input("E-mail",           key="cad_email")
-        st.text_input("Senha",            type="password", key="cad_senha")
-        st.text_input("Confirme a Senha", type="password", key="cad_conf_senha")
+        st.subheader("📝 Criar Nova Conta")
+        n_cad = st.text_input("Nome Completo", key="reg_nome_input")
+        e_cad = st.text_input("E-mail", key="reg_email_input")
+        s_cad = st.text_input("Senha", type="password", key="reg_senha_input")
+        s_cad_conf = st.text_input("Confirme a Senha", type="password", key="reg_conf_input")
 
-        if st.button("FINALIZAR CADASTRO", type="primary", key="btn_cadastro"):
-            # Lê sempre do session_state para garantir valor atualizado
-            n_cad      = st.session_state.get("cad_nome", "").strip()
-            e_cad      = st.session_state.get("cad_email", "").strip().lower()
-            s_cad      = st.session_state.get("cad_senha", "")
-            s_cad_conf = st.session_state.get("cad_conf_senha", "")
+        if st.button("FINALIZAR CADASTRO", type="primary", key="btn_finalizar_registro"):
+            if n_cad and e_cad and s_cad and s_cad_conf:
+                nome_f = n_cad.strip()
+                email_f = e_cad.strip().lower()
+                senha_f = s_cad.strip()
+                conf_f = s_cad_conf.strip()
 
-            if not n_cad or not e_cad or not s_cad or not s_cad_conf:
-                st.error("⚠️ Por favor, preencha todos os campos.")
-            elif len(s_cad) < 6:
-                st.error("⚠️ A senha deve ter no mínimo 6 caracteres.")
-            elif s_cad != s_cad_conf:
-                st.error("❌ As senhas não coincidem.")
-            elif email_existe(e_cad):
-                st.error("❌ Este e-mail já está cadastrado.")
-            else:
-                sucesso = registrar_usuario_google_forms(n_cad, e_cad, hash_senha(s_cad))
-                if sucesso:
-                    st.session_state.autenticado    = True
-                    st.session_state.usuario_logado = e_cad
-                    st.query_params["u"] = e_cad
-                    st.success("✅ Conta criada com sucesso!")
-                    st.rerun()
+                if len(senha_f) < 6:
+                    st.error("⚠️ A senha deve ter no mínimo 6 caracteres.")
+                elif senha_f != conf_f:
+                    st.error("❌ As senhas não coincidem.")
+                elif email_existe(email_f):
+                    st.error("❌ Este e-mail já está cadastrado.")
                 else:
-                    st.error("❌ Erro ao salvar cadastro na nuvem. Verifique sua conexão.")
+                    with st.spinner("Gravando na nuvem..."):
+                        sucesso = registrar_usuario_google_forms(nome_f, email_f, hash_senha(senha_f))
+                        if sucesso:
+                            st.session_state.autenticado = True
+                            st.session_state.usuario_logado = email_f
+                            st.success("✅ Conta criada com sucesso!")
+                            st.rerun()
+                        else:
+                            st.error("❌ Erro ao salvar. Verifique sua conexão.")
+            else:
+                st.warning("⚠️ Por favor, preencha todos os campos acima.")
 
     # ── ABA 3: RECUPERAR SENHA ──
     with t3:
@@ -367,86 +370,58 @@ def pagina_login():
                 if ok:
                     st.success(f"✅ Link de redefinição enviado para **{email_rec}**. Verifique sua caixa de entrada.")
                 else:
-                    # Fallback para app sem SMTP configurado
                     st.warning("⚠️ Envio automático de e-mail não configurado.")
                     st.info("Entre em contato com o suporte para redefinir sua senha manualmente.")
 
 
 # ============================================================
-# PÁGINA 2 — PLATAFORMA PRINCIPAL (USUÁRIO AUTENTICADO)
+# PÁGINA PRINCIPAL — SÓ EXECUTA SE ESTIVER LOGADO
 # ============================================================
 def pagina_principal():
-    # --- BARRA LATERAL ---
-    with st.sidebar:
-        usuario = st.session_state.get("usuario_logado", "Usuário")
-        st.write(f"👤 **{usuario}**")
-        st.divider()
+    # --- 1. CABEÇALHO ÚNICO (LOGO + TÍTULO) ---
+    html_cabecalho = f"""
+    <div style='display: flex; align-items: center; gap: 15px; margin-bottom: 5px;'>
+        <svg width="45" height="45" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+            <path d="M 20 80 A 30 30 0 0 1 80 80" stroke="white" stroke-width="8" stroke-linecap="round" fill="none"/>
+            <line x1="50" y1="15" x2="50" y2="60" stroke="white" stroke-width="8" stroke-linecap="round"/>
+            <path d="M 50 82 L 35 62 L 65 62 Z" fill="white"/>
+        </svg>
+        <h1 style='margin: 0; padding: 0; font-size: 2.2rem; color: white; font-family: sans-serif; white-space: nowrap;'>
+            TecPulver Brasil
+        </h1>
+    </div>
+    """
+    st.markdown(html_cabecalho, unsafe_allow_html=True)
 
-        st.markdown("### 📱 Instalar no Celular")
-        if st.checkbox("Como instalar?"):
-            st.info("""
-            **No Android (Chrome):**
-            1. Clique nos 3 pontinhos (⋮) no topo.
-            2. Clique em **'Instalar aplicativo'**.
-
-            **No iOS (Safari):**
-            1. Clique no botão de **Compartilhar** (quadrado com seta).
-            2. Role para baixo e clique em **'Adicionar à Tela de Início'**.
-            """)
-        st.divider()
-        if st.button("🚪 SAIR DA CONTA", key="sair_sidebar"):
-            st.session_state.autenticado  = False
-            st.session_state.usuario_logado = None
-            st.query_params.clear()
-            st.rerun()
-
-    # --- MODO GESTOR ---
-    if st.session_state.usuario_logado in ["fgustavo992@gmail.com", "felipe_fgd_@hotmail.com"]:
-        st.markdown("---")
-        st.warning("🛠️ PAINEL DE CONTROLE DO GESTOR")
-        st.write("A base de dados agora é gerenciada via Google Sheets para maior segurança.")
-        st.link_button(
-            "📊 ACESSAR BASE DE DADOS (GOOGLE SHEETS)",
-            "https://docs.google.com/spreadsheets/d/1-ra4aDcLc_UDokHszNUGXRRWNUE9hQfuwsD18HPAy0Y/",
-            use_container_width=True
-        )
-        st.info("Dica: Os novos cadastros feitos via Instagram aparecerão na planilha em tempo real.")
-
-    # --- CABEÇALHO ---
-    col_titulo, col_sair = st.columns([4, 1])
-    with col_titulo:
-        html_cabecalho = f"""
-        <div style='display: flex; align-items: center; gap: 15px; margin-bottom: 5px;'>
-            <svg width="45" height="45" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-                <path d="M 20 80 A 30 30 0 0 1 80 80" stroke="white" stroke-width="8" stroke-linecap="round" fill="none"/>
-                <line x1="50" y1="15" x2="50" y2="60" stroke="white" stroke-width="8" stroke-linecap="round"/>
-                <path d="M 50 82 L 35 62 L 65 62 Z" fill="white"/>
-            </svg>
-            <h1 style='margin: 0; padding: 0; font-size: 2.2rem; color: white; font-family: sans-serif; white-space: nowrap;'>
-                TecPulver Brasil
-            </h1>
-        </div>
-        <p style='color:#aaaaaa !important; font-size: 0.85em; margin: 0; margin-left: 60px;'>
-            🛰️ Monitoramento Ativo: {st.session_state.usuario_logado}
-        </p>
-        """
-        st.markdown(html_cabecalho, unsafe_allow_html=True)
-    with col_sair:
-        st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
-        if st.button("🚪 Sair", key="sair_topo"):
-            st.session_state.autenticado  = False
+    # --- 2. LINHA DE USUÁRIO E BOTÃO SAIR ---
+    # Criamos duas colunas: uma larga para o e-mail e uma estreita para o botão
+    col_user, col_btn_sair = st.columns([3, 1])
+    
+    with col_user:
+        st.markdown(f"<p style='color:#aaaaaa !important; font-size: 0.85em; margin-left: 60px;'>🛰️ Monitoramento Ativo: {st.session_state.usuario_logado}</p>", unsafe_allow_html=True)
+    
+    with col_btn_sair:
+        if st.button("🚪 SAIR", key="sair_topo_final"):
+            st.session_state.autenticado = False
             st.session_state.usuario_logado = None
             st.query_params.clear()
             st.rerun()
 
     st.divider()
 
+        # --- MODO GESTOR ---
+    if st.session_state.get("usuario_logado") in ["fgustavo992@gmail.com", "felipe_fgd_@hotmail.com"]:
+            st.warning("🛠️ GESTOR")
+            st.link_button("📊 PLANILHA", "https://docs.google.com/spreadsheets/d/1-ra4aDcLc_UDokHszNUGXRRWNUE9hQfuwsD18HPAy0Y/")
+    st.divider()
+
     # --- FORMULÁRIO TÉCNICO ---
     uf_sel = st.selectbox(
         "📍 ESTADO (UF):",
         options=["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG",
-                 "PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"],
-        index=None, placeholder="Digite aqui..."
+                "PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"],
+        index=None,
+        placeholder="Digite aqui..."
     )
 
     cidades = []
@@ -460,21 +435,28 @@ def pagina_principal():
             cidades = []
 
     cid_sel = st.selectbox(
-        "🏙️ CIDADE:", options=cidades,
-        index=None, placeholder="Digite aqui...", disabled=not uf_sel
+        "🏙️ CIDADE:",
+        options=cidades,
+        index=None,
+        placeholder="Digite aqui...",
+        disabled=not uf_sel
     )
 
     st.markdown("---")
 
-    classe_sel  = st.selectbox(
+    classe_sel = st.selectbox(
         "🧪 CLASSE QUÍMICA:",
         options=["Herbicidas","Fungicidas","Inseticidas","Reguladores"],
-        index=None, placeholder="Digite aqui..."
+        index=None,
+        placeholder="Digite aqui..."
     )
     opcoes_prod = carregar_produtos_turbo(classe_sel) if classe_sel else []
-    prod_sel    = st.selectbox(
-        "📦 PRODUTO COMERCIAL:", options=opcoes_prod,
-        index=None, placeholder="Digite aqui...", disabled=not classe_sel
+    prod_sel = st.selectbox(
+        "📦 PRODUTO COMERCIAL:",
+        options=opcoes_prod,
+        index=None,
+        placeholder="Digite aqui...",
+        disabled=not classe_sel
     )
     tipo_app = st.radio("🚜 MODALIDADE:", ["Terrestre", "Aérea"], horizontal=True)
 
@@ -489,23 +471,23 @@ def pagina_principal():
                     f"https://nominatim.openstreetmap.org/search"
                     f"?city={cidade_url}&state={uf_sel}&country=Brazil&format=json"
                 )
-                headers  = {'User-Agent': 'TecPulver-App-Felipe'}
-                geo_res  = requests.get(geo_url, headers=headers).json()
+                headers = {'User-Agent': 'TecPulver-App-Felipe'}
+                geo_res = requests.get(geo_url, headers=headers).json()
 
                 if geo_res:
-                    lat, lon   = geo_res[0]['lat'], geo_res[0]['lon']
-                    clima_url  = (
+                    lat, lon = geo_res[0]['lat'], geo_res[0]['lon']
+                    clima_url = (
                         f"https://api.open-meteo.com/v1/forecast"
                         f"?latitude={lat}&longitude={lon}"
                         f"&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m"
                         f"&forecast_days=2"
                     )
-                    res_clima  = requests.get(clima_url).json()
+                    res_clima = requests.get(clima_url).json()
 
                     st.markdown(f"### 🛰️ Planejamento 24h: {cid_sel} - {uf_sel}")
 
                     dados_horas = res_clima['hourly']
-                    hora_atual  = datetime.now().hour
+                    hora_atual = datetime.now().hour
                     linhas_html = ""
 
                     for i in range(hora_atual, hora_atual + 24):
@@ -515,8 +497,8 @@ def pagina_principal():
 
                         # FÓRMULA DE STULL
                         tw = (T * math.atan(0.151977 * math.pow(UR + 8.313659, 0.5)) +
-                              math.atan(T + UR) - math.atan(UR - 1.676331) +
-                              0.00391838 * math.pow(UR, 1.5) * math.atan(0.023101 * UR) - 4.686035)
+                            math.atan(T + UR) - math.atan(UR - 1.676331) +
+                            0.00391838 * math.pow(UR, 1.5) * math.atan(0.023101 * UR) - 4.686035)
                         dt_real = round(T - tw, 1)
 
                         ideal  = (10.0 <= T <= 30.0) and (2.0 <= dt_real <= 8.0) and (2.0 <= V <= 12.0)
@@ -615,19 +597,38 @@ def pagina_principal():
         else:
             st.warning("⚠️ Selecione Estado, Cidade e Produto antes de verificar.")
 
+   
 
+    # --- MODO GESTOR (conteúdo principal) ---
+    if st.session_state.get("usuario_logado") in ["fgustavo992@gmail.com", "felipe_fgd_@hotmail.com"]:
+        st.markdown("---")
+        st.warning("🛠️ PAINEL DE CONTROLE DO GESTOR")
+        st.write("A base de dados agora é gerenciada via Google Sheets para maior segurança.")
+        st.link_button(
+            "📊 ACESSAR BASE DE DADOS (GOOGLE SHEETS)",
+            "https://docs.google.com/spreadsheets/d/1-ra4aDcLc_UDokHszNUGXRRWNUE9hQfuwsD18HPAy0Y/",
+            use_container_width=True
+        )
+        st.info("Dica: Os novos cadastros feitos via Instagram aparecerão na planilha em tempo real.")
+
+# --- BOTÃO DE SAIR DE EMERGÊNCIA (Caso a barra lateral suma no PWA/Celular) ---
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    if st.button("🚪 ENCERRAR SESSÃO (SAIR)", key="sair_emergencia"):
+        st.session_state.autenticado = False
+        st.session_state.usuario_logado = None
+        st.query_params.clear()
+        st.rerun()
 # ============================================================
-# ROTEADOR PRINCIPAL — decide qual página exibir
+# ROTEADOR (O CORAÇÃO DO APP)
 # ============================================================
 params = st.query_params
 
-# Persistência via URL
-if not st.session_state.autenticado and params.get("u"):
-    st.session_state.autenticado   = True
+# Restaura sessão via URL (manter conectado)
+if not st.session_state.get("autenticado", False) and params.get("u"):
+    st.session_state.autenticado = True
     st.session_state.usuario_logado = params["u"]
 
-if st.session_state.autenticado:
+if st.session_state.get("autenticado", False):
     pagina_principal()
 else:
     pagina_login()
-
