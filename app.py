@@ -1,15 +1,23 @@
+import json
+import os
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
 import requests
-from datetime import datetime
 import os
 import math
 import hashlib
 import secrets
 import smtplib
+import toml
+import os
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from datetime import datetime
+import streamlit as st
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+TOKENS_FILE = os.path.join(BASE_DIR, "reset_tokens.json")
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="TecPulver Brasil", layout="centered", page_icon="🟢")
@@ -79,6 +87,54 @@ if "reset_tokens" not in st.session_state:
 
 # --- FUNÇÕES DE SUPORTE ---
 
+
+def disparar_email(destinatario, link):
+    remetente = "tecpulverbrasil@gmail.com"
+
+    # Busca a senha - tenta raiz primeiro, depois [default]
+    try:
+        senha_app = st.secrets["SMTP_PASSWORD"]
+    except KeyError:
+        try:
+            senha_app = st.secrets["default"]["SMTP_PASSWORD"]
+        except KeyError:
+            senha_app = None
+
+    if not senha_app:
+        st.error("⚠️ Senha SMTP não encontrada.")
+        return False
+    msg = MIMEMultipart()
+    msg['From'] = f"TecPulver Brasil <{remetente}>"
+    msg['To'] = destinatario
+    msg['Subject'] = "🔐 Redefinir sua senha - TecPulver"
+
+    corpo_html = f"""
+    <html>
+        <body style="font-family: sans-serif; background-color: #0a0f1e; padding: 30px; color: white;">
+            <div style="max-width: 500px; margin: auto; background: #111827; padding: 30px; border-radius: 14px; border: 1px solid #2e7d32;">
+                <h2 style="color: #4ade80; text-align: center;">🌿 TecPulver Brasil</h2>
+                <p>Recebemos uma solicitação para redefinir sua senha de acesso ao sistema.</p>
+                <p>Clique no botão abaixo para escolher uma nova senha:</p>
+                <div style="text-align: center; margin: 30px 0;">
+                    <a href="{link}" style="background-color: #166534; color: white; padding: 14px 28px; text-decoration: none; border-radius: 10px; font-weight: bold; display: inline-block; border: 1px solid #4ade80;">
+                        🔑 REDEFINIR MINHA SENHA
+                    </a>
+                </div>
+                <p style="font-size: 0.8em; color: #6b7280; text-align: center;">Este link levará você de volta ao portal TecPulver em segurança.</p>
+            </div>
+        </body>
+    </html>
+    """
+    msg.attach(MIMEText(corpo_html, 'html'))
+
+    try:
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+            server.login(remetente, senha_app)
+            server.send_message(msg)
+        return True
+    except Exception as e:
+        st.error(f"Erro no envio: {e}")
+        return False
 def hash_senha(senha):
     return hashlib.sha256(senha.encode('utf-8')).hexdigest()
 
@@ -148,54 +204,7 @@ def salvar_nova_senha(email, nova_senha_hash):
 def gerar_token():
     return secrets.token_urlsafe(32)
 
-def enviar_email_redefinicao(email_destino, token):
-    try:
-        gmail_user = st.secrets["gmail"]["usuario"]
-        gmail_pass = st.secrets["gmail"]["senha_app"]
-    except Exception:
-        return False, "Credenciais de email não configuradas nos Secrets do Streamlit."
 
-    link = f"https://tecpulver-brasil.streamlit.app/?reset_token={token}&email={email_destino}"
-
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = "🔐 TecPulver Brasil — Redefinição de Senha"
-    msg["From"] = gmail_user
-    msg["To"] = email_destino
-
-    corpo_html = f"""
-    <html>
-    <body style="background:#0a0f1e; font-family: sans-serif; padding: 30px;">
-        <div style="max-width:480px; margin:auto; background:#111827; border-radius:14px;
-                    border:1px solid rgba(74,222,128,0.2); padding:30px;">
-            <h2 style="color:#4ade80; margin-top:0;">🌿 TecPulver Brasil</h2>
-            <p style="color:#e2e8f0;">Recebemos uma solicitação para redefinir a senha da sua conta.</p>
-            <p style="color:#e2e8f0;">Clique no botão abaixo para criar uma nova senha:</p>
-            <a href="{link}" style="
-                display:inline-block; margin:20px 0;
-                background:linear-gradient(135deg,#14532d,#166534);
-                color:#bbf7d0; padding:14px 28px; border-radius:10px;
-                text-decoration:none; font-weight:700; font-size:1em;
-                border:1px solid rgba(74,222,128,0.3);">
-                🔑 Redefinir Minha Senha
-            </a>
-            <p style="color:#6b7280; font-size:0.8em;">
-                Este link expira em 1 hora. Se você não solicitou a redefinição, ignore este email.
-            </p>
-            <hr style="border-color:rgba(255,255,255,0.08); margin-top:20px;">
-            <p style="color:#374151; font-size:0.75em;">TecPulver Brasil — Monitoramento Agronômico</p>
-        </div>
-    </body>
-    </html>
-    """
-    msg.attach(MIMEText(corpo_html, "html"))
-
-    try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(gmail_user, gmail_pass)
-            server.sendmail(gmail_user, email_destino, msg.as_string())
-        return True, "ok"
-    except Exception as e:
-        return False, str(e)
 
 @st.cache_data
 def carregar_produtos_turbo(classe):
@@ -222,14 +231,32 @@ def carregar_produtos_turbo(classe):
 # PÁGINA 1 — LOGIN / CADASTRO / RECUPERAÇÃO DE SENHA
 # ============================================================
 def pagina_login():
-    params = st.query_params
+    from urllib.parse import unquote
+
+    params = st.query_params  # ← faltava isso!
 
     # --- FLUXO DE REDEFINIÇÃO VIA TOKEN NA URL ---
     reset_token_url = params.get("reset_token", "")
-    reset_email_url = params.get("email", "")
+    reset_email_url = unquote(params.get("email", "")).strip().lower()  # ← decodifica %40 → @
 
     if reset_token_url and reset_email_url:
-        token_valido = st.session_state.reset_tokens.get(reset_token_url) == reset_email_url.strip().lower()
+        token_valido = False
+        tokens_salvos = {}
+
+        if os.path.exists(TOKENS_FILE):
+            with open(TOKENS_FILE, "r") as f:
+                tokens_salvos = json.load(f)
+
+            # DEBUG - remova depois
+            st.write("Token da URL:", repr(reset_token_url))
+            st.write("Email da URL:", repr(reset_email_url))
+            st.write("Tokens no arquivo:", tokens_salvos)
+            st.write("Valor encontrado:", tokens_salvos.get(reset_token_url))
+
+            token_valido = tokens_salvos.get(reset_token_url) == reset_email_url
+        else:
+            st.warning("⚠️ Arquivo de tokens não encontrado!")
+
         st.markdown("<h2 style='text-align:center; color:white;'>🔑 Redefinir Senha</h2>", unsafe_allow_html=True)
 
         if not token_valido:
@@ -240,6 +267,7 @@ def pagina_login():
         else:
             nova1 = st.text_input("Nova senha:", type="password", placeholder="Mínimo 6 caracteres")
             nova2 = st.text_input("Confirmar nova senha:", type="password", placeholder="Repita a senha")
+
             if st.button("✅ SALVAR NOVA SENHA", type="primary"):
                 if not nova1 or not nova2:
                     st.error("Preencha os dois campos.")
@@ -250,7 +278,11 @@ def pagina_login():
                 else:
                     ok = salvar_nova_senha(reset_email_url, hash_senha(nova1))
                     if ok:
-                        del st.session_state.reset_tokens[reset_token_url]
+                        tokens_salvos.pop(reset_token_url, None)
+                        with open(TOKENS_FILE, "w") as f:
+                            json.dump(tokens_salvos, f)
+                        if reset_token_url in st.session_state.get("reset_tokens", {}):
+                            del st.session_state.reset_tokens[reset_token_url]
                         st.success("✅ Senha redefinida com sucesso! Faça login agora.")
                         st.query_params.clear()
                         st.rerun()
@@ -275,7 +307,6 @@ def pagina_login():
 
     # --- ABAS ---
     t1, t2, t3 = st.tabs(["🔐 Entrar", "📝 Criar Conta", "🔑 Recuperar"])
-
     # ── ABA 1: LOGIN ──
     with t1:
         campo_email = st.text_input("E-mail:", key="e_login_input", placeholder="seu@email.com")
@@ -351,6 +382,7 @@ def pagina_login():
                 st.warning("⚠️ Por favor, preencha todos os campos acima.")
 
     # ── ABA 3: RECUPERAR SENHA ──
+    # ── ABA 3: RECUPERAR SENHA ──
     with t3:
         st.subheader("🔑 Recuperar Acesso")
         st.write("Insira seu e-mail abaixo para validar sua conta.")
@@ -363,16 +395,34 @@ def pagina_login():
             elif not email_existe(email_rec):
                 st.error("❌ Este e-mail não consta em nossa base de produtores.")
             else:
+                # 1. Gerar token
                 token = gerar_token()
-                st.session_state.reset_tokens[token] = email_rec
+                if 'reset_tokens' not in st.session_state:
+                    st.session_state.reset_tokens = {}
+                st.session_state.reset_tokens[token] = email_rec.strip().lower()
 
-                ok, msg = enviar_email_redefinicao(email_rec, token)
-                if ok:
-                    st.success(f"✅ Link de redefinição enviado para **{email_rec}**. Verifique sua caixa de entrada.")
+                # 2. Salvar token em arquivo
+                tokens_file = "reset_tokens.json"
+                if os.path.exists(tokens_file):
+                    with open(tokens_file, "r") as f:
+                        tokens_salvos = json.load(f)
                 else:
-                    st.warning("⚠️ Envio automático de e-mail não configurado.")
-                    st.info("Entre em contato com o suporte para redefinir sua senha manualmente.")
+                    tokens_salvos = {}
 
+                tokens_salvos[token] = email_rec.strip().lower()
+                with open(tokens_file, "w") as f:
+                    json.dump(tokens_salvos, f)
+
+                # 3. Gerar link e enviar e-mail
+                url_app = "https://tecpulver-brasil.streamlit.app"
+                link_reset = f"{url_app}/?reset_token={token}&email={email_rec}"
+
+                with st.spinner("Enviando e-mail de recuperação..."):
+                    if disparar_email(email_rec, link_reset):
+                        st.success(f"✅ Link enviado para **{email_rec}**!")
+                        st.info("Verifique sua caixa de entrada ou pasta de SPAM.")
+                    else:
+                        st.error("❌ Falha ao enviar e-mail.")
 
 # ============================================================
 # PÁGINA PRINCIPAL — SÓ EXECUTA SE ESTIVER LOGADO
@@ -611,13 +661,7 @@ def pagina_principal():
         )
         st.info("Dica: Os novos cadastros feitos via Instagram aparecerão na planilha em tempo real.")
 
-# --- BOTÃO DE SAIR DE EMERGÊNCIA (Caso a barra lateral suma no PWA/Celular) ---
-    st.markdown("<br><br>", unsafe_allow_html=True)
-    if st.button("🚪 ENCERRAR SESSÃO (SAIR)", key="sair_emergencia"):
-        st.session_state.autenticado = False
-        st.session_state.usuario_logado = None
-        st.query_params.clear()
-        st.rerun()
+
 # ============================================================
 # ROTEADOR (O CORAÇÃO DO APP)
 # ============================================================
