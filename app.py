@@ -289,17 +289,31 @@ def carregar_produtos_turbo(classe):
         "Inseticidas": "inseticidas.csv",
         "Reguladores": "reguladores.csv",
     }
+    
     arquivo = mapa.get(classe)
-    if arquivo and os.path.exists(arquivo):
-        try:
-            df = pd.read_csv(arquivo, sep=None, engine='python', encoding='utf-8-sig', on_bad_lines='skip')
-            if not df.empty:
-                return sorted(df.iloc[:, 0].dropna().unique().tolist())
-            else:
-                return ["Arquivo CSV está vazio"]
-        except Exception:
-            return [f"Erro na leitura: {arquivo}"]
-    return [f"Arquivo {arquivo} não encontrado na pasta"]
+    
+    if not arquivo:
+        return ["Classe não encontrada"]
+
+    try:
+        # Pega o caminho da pasta onde o app.py está rodando
+        diretorio_atual = os.path.dirname(os.path.abspath(__file__))
+        caminho_completo = os.path.join(diretorio_atual, arquivo)
+
+        # Verifica se o arquivo realmente existe no GitHub/Pasta
+        if os.path.exists(caminho_completo):
+            # Lendo o CSV
+            # Se o seu CSV usar ponto e vírgula (;), mude sep=',' para sep=';'
+            df = pd.read_csv(caminho_completo, sep=',', encoding='utf-8-sig', on_bad_lines='skip')
+            
+            # Pega a primeira coluna (geralmente o nome do produto), remove nulos e duplicados
+            lista_produtos = df.iloc[:, 0].dropna().unique().tolist()
+            return sorted(lista_produtos)
+        else:
+            return [f"Erro: Arquivo {arquivo} não encontrado no servidor."]
+
+    except Exception as e:
+        return [f"Erro ao ler o arquivo {arquivo}: {e}"]
 
 
 # ============================================================
@@ -410,38 +424,24 @@ def pagina_login():
                 with st.spinner("Conectando à base de dados..."):
                     try:
                         sheet = conectar_planilha()
-                        # O gspread levanta um erro se não achar, por isso usamos o try
-                        cell = sheet.find(email_rec)
-            
-                        # Se chegou aqui, é porque achou o e-mail
+                        cell = sheet.find(email_rec) # Localiza o e-mail
+                        
                         token = gerar_token()
-                        # Salva token na Coluna 5 (E)
-                        sheet.update_cell(cell.row, 5, token)
+                        
+                        # Grava na Coluna 6 (Coluna F - Token)
+                        sheet.update_cell(cell.row, 6, token)
 
-                        from urllib.parse import quote
+                        # Gera o link
                         url_app = "https://tecpulver-brasil.streamlit.app"
-                        link_reset = f"{url_app}/?reset_token={token}&email={quote(email_rec)}"
+                        link_reset = f"{url_app}/?reset_token={token}&email={email_rec}"
 
-                        with st.spinner("Enviando e-mail de recuperação..."):
-                            sucesso_email = disparar_email(email_rec, link_reset)
-                            
-                            # Como a função retorna True ou False, o IF fica assim:
-                            if sucesso_email: 
-                                st.success(f"✅ Link enviado para **{email_rec}**!")
-                                st.info("Verifique sua caixa de entrada ou pasta de SPAM.")
-                            else:
-                                st.error("❌ Erro ao enviar o e-mail. Tente novamente.")
-
+                        if disparar_email(email_rec, link_reset):
+                            st.success("✅ Link enviado! Verifique sua caixa de entrada.")
+                    
                     except gspread.exceptions.CellNotFound:
-                        # Se o e-mail não estiver na planilha, cai aqui
-                        st.success("✅ Se o e-mail estiver cadastrado, você receberá o link em breve.")
+                        st.error("❌ E-mail não encontrado na base de dados.")
                     except Exception as e:
-                        # Se o erro for que não achou o e-mail (CellNotFound)
-                        if "CellNotFound" in str(type(e)):
-                            st.success("✅ Se o e-mail estiver cadastrado, você receberá o link em breve.")
-                        else:
-                            # Se for outro erro (como internet ou planilha)
-                            st.error(f"⚠️ Ocorreu um detalhe técnico: {e}")
+                        st.error(f"❌ Erro ao processar: {e}")
 # ============================================================
 # PÁGINA PRINCIPAL — SÓ EXECUTA SE ESTIVER LOGADO
 # ============================================================
