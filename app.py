@@ -17,11 +17,6 @@ from datetime import datetime
 from urllib.parse import unquote  # ← MOVIDO PARA O TOPO
 import gspread.exceptions
  
-raw = st.secrets["gcp_service_account"]["private_key"]
-st.code(repr(raw[:80]))  # mostra os primeiros 80 chars com escapes visíveis
-def gerar_hash_senha(senha):
-    return hashlib.sha256(senha.encode()).hexdigest()
-
 # --- FUNÇÃO DE CONEXÃO MESTRA ---
 # --- FUNÇÃO DE CONEXÃO MESTRA ---
 def conectar_planilha():
