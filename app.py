@@ -16,7 +16,8 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 from urllib.parse import unquote  # ← MOVIDO PARA O TOPO
 import gspread.exceptions
-from gspread.exceptions import CellNotFound 
+ 
+
 def gerar_hash_senha(senha):
     return hashlib.sha256(senha.encode()).hexdigest()
 
@@ -425,23 +426,26 @@ def pagina_login():
                 with st.spinner("Conectando à base de dados..."):
                     try:
                         sheet = conectar_planilha()
-                        cell = sheet.find(email_rec) # Localiza o e-mail
+                        cell = sheet.find(email_rec) # Procura o e-mail na planilha
                         
-                        token = gerar_token()
-                        
-                        # Grava na Coluna 6 (Coluna F - Token)
-                        sheet.update_cell(cell.row, 6, token)
+                        # Nova forma de verificar se o e-mail não foi encontrado
+                        if cell is None:
+                            st.error("❌ E-mail não encontrado na base de dados.")
+                        else:
+                            token = gerar_token()
+                            
+                            # Grava na Coluna 6 (Coluna F - Token)
+                            sheet.update_cell(cell.row, 6, token)
 
-                        # Gera o link
-                        url_app = "https://tecpulver-brasil.streamlit.app"
-                        link_reset = f"{url_app}/?reset_token={token}&email={email_rec}"
+                            # Gera o link
+                            url_app = "https://tecpulver-brasil.streamlit.app"
+                            link_reset = f"{url_app}/?reset_token={token}&email={email_rec}"
 
-                        if disparar_email(email_rec, link_reset):
-                            st.success("✅ Link enviado! Verifique sua caixa de entrada.")
-                    
-                    except CellNotFound:
-                        st.error("❌ E-mail não encontrado na base de dados.")
+                            if disparar_email(email_rec, link_reset):
+                                st.success("✅ Link enviado! Verifique sua caixa de entrada.")
+                            
                     except Exception as e:
+                        # Pega qualquer outro erro de conexão ou leitura
                         st.error(f"❌ Erro ao processar: {e}")
 # ============================================================
 # PÁGINA PRINCIPAL — SÓ EXECUTA SE ESTIVER LOGADO
