@@ -24,15 +24,21 @@ def gerar_hash_senha(senha):
 # --- FUNÇÃO DE CONEXÃO MESTRA ---
 # --- FUNÇÃO DE CONEXÃO MESTRA ---
 def conectar_planilha():
-    scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
+    scope = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
+
+    # ✅ Converte o secrets para dict e corrige a private_key
+    creds_dict = dict(st.secrets["gcp_service_account"])
+    creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+
+    creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
     client = gspread.authorize(creds)
-    
-    # Usando o ID da planilha (mais rápido e à prova de erros de nome)
+
     id_da_planilha = "1-ra4aDcLc_UDokHszNUGXRRWNUE9hQfuwsD18HPAy0Y"
-    
     spreadsheet = client.open_by_key(id_da_planilha)
-    sheet = spreadsheet.get_worksheet(0) # Pega a primeira aba
+    sheet = spreadsheet.get_worksheet(0)
     return sheet
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
