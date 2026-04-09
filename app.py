@@ -17,7 +17,8 @@ from datetime import datetime
 from urllib.parse import unquote  # ← MOVIDO PARA O TOPO
 import gspread.exceptions
  
-
+raw = st.secrets["gcp_service_account"]["private_key"]
+st.code(repr(raw[:80]))  # mostra os primeiros 80 chars com escapes visíveis
 def gerar_hash_senha(senha):
     return hashlib.sha256(senha.encode()).hexdigest()
 
@@ -29,7 +30,13 @@ def conectar_planilha():
         "https://www.googleapis.com/auth/drive"
     ]
 
-    # ✅ Converte o secrets para dict e corrige a private_key
+    # 🔍 DIAGNÓSTICO - remova depois
+    raw_key = st.secrets["gcp_service_account"]["private_key"]
+    st.write("Primeiros 100 chars:", repr(raw_key[:100]))
+    st.write("Tem \\\\n literal?", "\\n" in raw_key)
+    st.write("Tem \\n real?", "\n" in raw_key)
+    st.write("Byte 4:", repr(raw_key[3]))  # Byte 3 que está falhando
+
     creds_dict = dict(st.secrets["gcp_service_account"])
     creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
 
