@@ -15,7 +15,8 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 from urllib.parse import unquote  # ← MOVIDO PARA O TOPO
-import gspread.exceptions 
+import gspread.exceptions
+from gspread.exceptions import CellNotFound 
 def gerar_hash_senha(senha):
     return hashlib.sha256(senha.encode()).hexdigest()
 
@@ -438,7 +439,7 @@ def pagina_login():
                         if disparar_email(email_rec, link_reset):
                             st.success("✅ Link enviado! Verifique sua caixa de entrada.")
                     
-                    except gspread.exceptions.CellNotFound:
+                    except CellNotFound:
                         st.error("❌ E-mail não encontrado na base de dados.")
                     except Exception as e:
                         st.error(f"❌ Erro ao processar: {e}")
