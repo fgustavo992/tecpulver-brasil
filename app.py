@@ -17,7 +17,8 @@ from datetime import datetime
 from urllib.parse import unquote  # ← MOVIDO PARA O TOPO
 import gspread.exceptions
  
-# --- FUNÇÃO DE CONEXÃO MESTRA ---
+def gerar_hash_senha(senha):
+    return hashlib.sha256(senha.encode()).hexdigest()
 # --- FUNÇÃO DE CONEXÃO MESTRA ---
 def conectar_planilha():
     scope = [
