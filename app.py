@@ -190,19 +190,12 @@ if _reset_token and _reset_email:
 # --- FUNÇÕES DE SUPORTE ---
 
 def disparar_email(destinatario, link):
-    # DEBUG - remova depois
-    st.write("Todas as chaves do secrets:", list(st.secrets.keys()))
-    st.write("SMTP_PASSWORD existe?", "SMTP_PASSWORD" in st.secrets)
-    
     remetente = "tecpulverbrasil@gmail.com"
     try:
-        senha_app = st.secrets["SMTP_PASSWORD"]
+        senha_app = st.secrets["smtp"]["password"]
     except KeyError:
-        try:
-            senha_app = st.secrets["default"]["SMTP_PASSWORD"]
-        except KeyError:
-            senha_app = None
-    
+        senha_app = None
+
     if not senha_app:
         st.error("⚠️ Senha SMTP não encontrada.")
         return False
