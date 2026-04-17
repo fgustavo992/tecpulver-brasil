@@ -26,13 +26,6 @@ def conectar_planilha():
         "https://www.googleapis.com/auth/drive"
     ]
 
-    # 🔍 DIAGNÓSTICO - remova depois
-    raw_key = st.secrets["gcp_service_account"]["private_key"]
-    st.write("Primeiros 100 chars:", repr(raw_key[:100]))
-    st.write("Tem \\\\n literal?", "\\n" in raw_key)
-    st.write("Tem \\n real?", "\n" in raw_key)
-    st.write("Byte 4:", repr(raw_key[3]))  # Byte 3 que está falhando
-
     creds_dict = dict(st.secrets["gcp_service_account"])
     creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
 
