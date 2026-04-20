@@ -559,39 +559,66 @@ def pagina_principal():
                     dados_horas = res_clima['hourly']
                     hora_atual = datetime.now().hour
                     linhas_html = ""
-
+                    row_bg = ""
+                    row_border = ""
+                    cor_dt = ""
                     for i in range(hora_atual, hora_atual + 24):
                         T  = dados_horas['temperature_2m'][i]
                         UR = dados_horas['relative_humidity_2m'][i]
                         V  = dados_horas['wind_speed_10m'][i]
 
                         tw = (T * math.atan(0.151977 * math.pow(UR + 8.313659, 0.5)) +
-                              math.atan(T + UR) - math.atan(UR - 1.676331) +
-                              0.00391838 * math.pow(UR, 1.5) * math.atan(0.023101 * UR) - 4.686035)
+                            math.atan(T + UR) - math.atan(UR - 1.676331) +
+                            0.00391838 * math.pow(UR, 1.5) * math.atan(0.023101 * UR) - 4.686035)
                         dt_real = round(T - tw, 1)
 
-                        ideal  = (10.0 <= T <= 30.0) and (2.0 <= dt_real <= 8.0) and (2.0 <= V <= 12.0)
-                        cor_dt = "#4ade80" if 2.0 <= dt_real <= 8.0 else "#f87171"
-                        row_bg     = "rgba(74,222,128,0.06)"   if ideal else "rgba(255,255,255,0.02)"
-                        row_border = "1px solid rgba(74,222,128,0.15)" if ideal else "1px solid rgba(255,255,255,0.05)"
+                        cor_dt = "#4ade80" if 2.0 <= dt_real <= 8.0 else "#f87171"  # ← ESTAVA FALTANDO
+
+                        hora = i % 24
+                        inversao_termica = hora <= 8 or hora >= 17
+
+                        if tipo_app == "Aérea":
+                            ideal = (
+                                10.0 <= T <= 30.0 and
+                                2.0 <= dt_real <= 8.0 and
+                                2.0 <= V <= 8.0 and
+                                UR >= 50.0 and
+                                not inversao_termica
+                            )
+                        else:
+                            ideal = (
+                                10.0 <= T <= 30.0 and
+                                2.0 <= dt_real <= 8.0 and
+                                2.0 <= V <= 12.0 and
+                                UR >= 40.0
+                            )
+
+                        row_bg     = "rgba(74,222,128,0.06)"  if ideal else "rgba(255,255,255,0.02)"   # ← ESTAVA FALTANDO
+                        row_border = "1px solid rgba(74,222,128,0.15)" if ideal else "1px solid rgba(255,255,255,0.05)"  # ← ESTAVA FALTANDO
 
                         if ideal:
-                            badge = """
-                            <span style="display:inline-flex; align-items:center; gap:5px;
+                            badge = """<span style="display:inline-flex; align-items:center; gap:5px;
                                 background: linear-gradient(135deg, #14532d, #166534);
                                 color: #bbf7d0; padding: 5px 14px; border-radius: 999px;
                                 font-size: 0.75em; font-weight: 700; letter-spacing: 0.05em;
                                 border: 1px solid rgba(74,222,128,0.3); text-transform: uppercase;">
                                 ✅ IDEAL</span>"""
+                        elif tipo_app == "Aérea" and inversao_termica:
+                            badge = """<span style="display:inline-flex; align-items:center; gap:5px;
+                                background: linear-gradient(135deg, #431407, #7c2d12);
+                                color: #fdba74; padding: 5px 14px; border-radius: 999px;
+                                font-size: 0.75em; font-weight: 700; letter-spacing: 0.05em;
+                                border: 1px solid rgba(251,146,60,0.3); text-transform: uppercase;">
+                                ⚠️ INVERSÃO</span>"""
                         else:
-                            badge = """
-                            <span style="display:inline-flex; align-items:center; gap:5px;
+                            badge = """<span style="display:inline-flex; align-items:center; gap:5px;
                                 background: linear-gradient(135deg, #450a0a, #7f1d1d);
                                 color: #fca5a5; padding: 5px 14px; border-radius: 999px;
                                 font-size: 0.75em; font-weight: 700; letter-spacing: 0.05em;
                                 border: 1px solid rgba(248,113,113,0.3); text-transform: uppercase;">
                                 ❌ INADEQUADO</span>"""
 
+                        hora_fmt = f"{i % 24:02d}"
                         linhas_html += f"""
                         <tr style="background:{row_bg}; border-bottom:{row_border}; transition: background 0.2s;">
                             <td style="padding:13px 16px; text-align:center;">
@@ -599,56 +626,58 @@ def pagina_principal():
                                     font-family: 'Courier New', monospace; font-weight: 800;
                                     font-size: 0.95em; padding: 4px 10px; border-radius: 6px;
                                     border: 1px solid rgba(165,214,167,0.2); letter-spacing: 0.05em;">
-                                    {i % 24:02d}:00</span>
+                                    {hora_fmt}:00</span>
                             </td>
-                            <td style="padding:13px 16px; text-align:center; color:#e2e8f0; font-size:0.95em; font-weight:600;">
-                                {T:.1f}<span style="color:#94a3b8; font-size:0.8em; margin-left:2px;">°C</span>
-                            </td>
+                            <td style="padding:13px 16px; text-align:center;">{badge}</td>
                             <td style="padding:13px 16px; text-align:center; color:{cor_dt}; font-weight:900; font-size:1.05em; letter-spacing:0.02em;">
-                                {dt_real}
+                                <span style="color:{cor_dt};">{dt_real}</span>
                             </td>
                             <td style="padding:13px 16px; text-align:center; color:#e2e8f0; font-size:0.95em; font-weight:600;">
                                 {UR:.0f}<span style="color:#94a3b8; font-size:0.8em; margin-left:2px;">%</span>
                             </td>
                             <td style="padding:13px 16px; text-align:center; color:#e2e8f0; font-size:0.95em; font-weight:600;">
+                                {T:.1f}<span style="color:#94a3b8; font-size:0.8em; margin-left:2px;">°C</span>
+                            </td>
+                            <td style="padding:13px 16px; text-align:center; color:#e2e8f0; font-size:0.95em; font-weight:600;">
                                 {V:.1f}<span style="color:#94a3b8; font-size:0.8em; margin-left:2px;">km/h</span>
                             </td>
-                            <td style="padding:13px 16px; text-align:center;">{badge}</td>
                         </tr>
-                        """
-
-                    tabela_completa = f"""
+                        """       
+                    css_tabela = """
                     <style>
                         @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600;700&display=swap');
-                        .tp-table-wrapper {{
+                        .tp-table-wrapper {
                             font-family: 'IBM Plex Sans', sans-serif;
                             background: #0a0f1e; border-radius: 14px; overflow: hidden;
                             border: 1px solid rgba(255,255,255,0.08);
                             box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(74,222,128,0.05);
-                        }}
-                        .tp-table-wrapper table {{ width: 100%; border-collapse: collapse; }}
-                        .tp-table-wrapper thead tr {{
+                        }
+                        .tp-table-wrapper table { width: 100%; border-collapse: collapse; }
+                        .tp-table-wrapper thead tr {
                             background: linear-gradient(90deg, #0d1f12, #0a1a2e);
                             border-bottom: 2px solid rgba(74,222,128,0.25);
-                        }}
-                        .tp-table-wrapper thead th {{
+                        }
+                        .tp-table-wrapper thead th {
                             padding: 14px 16px; text-align: center; font-size: 0.7em;
                             font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #6b7280;
-                        }}
-                        .tp-table-wrapper thead th.col-dt {{ color: #4ade80; }}
-                        .tp-table-wrapper tbody tr:hover {{ background: rgba(255,255,255,0.04) !important; }}
-                        .tp-table-wrapper tbody tr:last-child {{ border-bottom: none !important; }}
+                        }
+                        .tp-table-wrapper thead th.col-dt { color: #4ade80; }
+                        .tp-table-wrapper tbody tr:hover { background: rgba(255,255,255,0.04) !important; }
+                        .tp-table-wrapper tbody tr:last-child { border-bottom: none !important; }
                     </style>
+                    """
+
+                    tabela_completa = css_tabela + f"""
                     <div class="tp-table-wrapper">
                         <table>
                             <thead>
                                 <tr>
                                     <th>🕐 Hora</th>
-                                    <th>🌡️ Temp</th>
+                                    <th>● Status</th>
                                     <th class="col-dt">⬦ Delta T</th>
                                     <th>💧 Umid</th>
+                                    <th>🌡️ Temp</th>
                                     <th>💨 Vento</th>
-                                    <th>● Status</th>
                                 </tr>
                             </thead>
                             <tbody>{linhas_html}</tbody>
