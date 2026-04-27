@@ -13,10 +13,11 @@ import smtplib
 import toml
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from datetime import datetime
+from datetime import datetime, timedelta
 from urllib.parse import unquote  # ← MOVIDO PARA O TOPO
 import gspread.exceptions
- 
+
+
 def gerar_hash_senha(senha):
     return hashlib.sha256(senha.encode()).hexdigest()
 # --- FUNÇÃO DE CONEXÃO MESTRA ---
@@ -34,7 +35,7 @@ def conectar_planilha():
 
     id_da_planilha = "1-ra4aDcLc_UDokHszNUGXRRWNUE9hQfuwsD18HPAy0Y"
     spreadsheet = client.open_by_key(id_da_planilha)
-    sheet = spreadsheet.get_worksheet(0)
+    sheet = conectar_planilha().spreadsheet.worksheet("Agenda_Aplicacoes")
     return sheet
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -533,6 +534,53 @@ def pagina_principal():
 
     st.divider()
 
+    # --- NOVO: SEÇÃO DE AGENDAMENTO E INTERVALOS ---
+    st.subheader("📅 Agendamento de Alertas WhatsApp")
+    col_data, col_freq = st.columns(2)
+    
+    with col_data:
+        data_inicio = st.date_input("Data da Aplicação:", datetime.now())
+    
+    with col_freq:
+        frequencia = st.selectbox("Repetição:", ["Única", "Intervalos Programados"])
+
+    dias_intervalo = 0
+    num_repeticoes = 1
+    
+    if frequencia == "Intervalos Programados":
+        c1, c2 = st.columns(2)
+        with c1:
+            dias_intervalo = st.number_input("Intervalo (Dias):", min_value=1, value=7)
+        with c2:
+            num_repeticoes = st.number_input("Total de Aplicações:", min_value=2, value=2)
+
+    wpp_user = st.text_input("📱 WhatsApp para receber alertas (ex: 45999999999):")
+
+    if st.button("🚀 SALVAR AGENDAMENTO E ATIVAR MONITORAMENTO", use_container_width=True):
+        if cid_sel and prod_sel and wpp_user:
+            try:
+                sheet = conectar_planilha().worksheet("Agenda_Aplicacoes")
+                for i in range(num_repeticoes):
+                    data_calc = data_inicio + timedelta(days=i * dias_intervalo)
+                    nova_linha = [
+                        st.session_state.usuario_logado,
+                        cid_sel,
+                        uf_sel,
+                        prod_sel,
+                        data_calc.strftime("%d/%m/%Y"),
+                        wpp_user,
+                        "Pendente"
+                    ]
+                    sheet.append_row(nova_linha)
+                st.success(f"✅ Agendamento realizado! Alertas serão enviados na véspera de cada data às 19:00.")
+            except Exception as e:
+                st.error(f"Erro ao salvar na planilha: {e}")
+        else:
+            st.warning("⚠️ Preencha Cidade, Produto e WhatsApp para agendar.")
+
+    st.divider()
+
+    # --- BOTÃO ORIGINAL DE VERIFICAÇÃO IMEDIATA ---
     if st.button("VERIFICAR CONDIÇÕES AGORA", type="primary"):
         if uf_sel and cid_sel and prod_sel:
             try:
@@ -559,9 +607,6 @@ def pagina_principal():
                     dados_horas = res_clima['hourly']
                     hora_atual = datetime.now().hour
                     linhas_html = ""
-                    row_bg = ""
-                    row_border = ""
-                    cor_dt = ""
                     for i in range(hora_atual, hora_atual + 24):
                         T  = dados_horas['temperature_2m'][i]
                         UR = dados_horas['relative_humidity_2m'][i]
@@ -572,7 +617,7 @@ def pagina_principal():
                             0.00391838 * math.pow(UR, 1.5) * math.atan(0.023101 * UR) - 4.686035)
                         dt_real = round(T - tw, 1)
 
-                        cor_dt = "#4ade80" if 2.0 <= dt_real <= 8.0 else "#f87171"  # ← ESTAVA FALTANDO
+                        cor_dt = "#4ade80" if 2.0 <= dt_real <= 8.0 else "#f87171"
 
                         hora = i % 24
                         inversao_termica = hora <= 8 or hora >= 17
@@ -593,8 +638,8 @@ def pagina_principal():
                                 UR >= 40.0
                             )
 
-                        row_bg     = "rgba(74,222,128,0.06)"  if ideal else "rgba(255,255,255,0.02)"   # ← ESTAVA FALTANDO
-                        row_border = "1px solid rgba(74,222,128,0.15)" if ideal else "1px solid rgba(255,255,255,0.05)"  # ← ESTAVA FALTANDO
+                        row_bg = "rgba(74,222,128,0.06)" if ideal else "rgba(255,255,255,0.02)"
+                        row_border = "1px solid rgba(74,222,128,0.15)" if ideal else "1px solid rgba(255,255,255,0.05)"
 
                         if ideal:
                             badge = """<span style="display:inline-flex; align-items:center; gap:5px;
@@ -630,7 +675,7 @@ def pagina_principal():
                             </td>
                             <td style="padding:13px 16px; text-align:center;">{badge}</td>
                             <td style="padding:13px 16px; text-align:center; color:{cor_dt}; font-weight:900; font-size:1.05em; letter-spacing:0.02em;">
-                                <span style="color:{cor_dt};">{dt_real}</span>
+                                <span>{dt_real}</span>
                             </td>
                             <td style="padding:13px 16px; text-align:center; color:#e2e8f0; font-size:0.95em; font-weight:600;">
                                 {UR:.0f}<span style="color:#94a3b8; font-size:0.8em; margin-left:2px;">%</span>
@@ -642,7 +687,8 @@ def pagina_principal():
                                 {V:.1f}<span style="color:#94a3b8; font-size:0.8em; margin-left:2px;">km/h</span>
                             </td>
                         </tr>
-                        """       
+                        """
+                    
                     css_tabela = """
                     <style>
                         @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600;700&display=swap');
@@ -650,7 +696,6 @@ def pagina_principal():
                             font-family: 'IBM Plex Sans', sans-serif;
                             background: #0a0f1e; border-radius: 14px; overflow: hidden;
                             border: 1px solid rgba(255,255,255,0.08);
-                            box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(74,222,128,0.05);
                         }
                         .tp-table-wrapper table { width: 100%; border-collapse: collapse; }
                         .tp-table-wrapper thead tr {
@@ -662,8 +707,6 @@ def pagina_principal():
                             font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #6b7280;
                         }
                         .tp-table-wrapper thead th.col-dt { color: #4ade80; }
-                        .tp-table-wrapper tbody tr:hover { background: rgba(255,255,255,0.04) !important; }
-                        .tp-table-wrapper tbody tr:last-child { border-bottom: none !important; }
                     </style>
                     """
 
@@ -702,7 +745,6 @@ def pagina_principal():
             use_container_width=True
         )
         st.info("Dica: Os novos cadastros feitos via Instagram aparecerão na planilha em tempo real.")
-
 
 # ============================================================
 # ROTEADOR
